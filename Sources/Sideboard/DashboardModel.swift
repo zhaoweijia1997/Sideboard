@@ -6,7 +6,7 @@ import Observation
 enum RemoteKey: Int, CaseIterable {
     case home = 3, back = 4, up = 19, down = 20, left = 21, right = 22, ok = 23
     case volumeUp = 24, volumeDown = 25, power = 26, menu = 82, playPause = 85
-    case mute = 164, sleep = 223, wake = 224
+    case mute = 164, recentApps = 187, sleep = 223, wake = 224
 }
 
 /// A file going to or coming from the device, or an app being installed.
@@ -320,6 +320,11 @@ final class DashboardModel {
             return String(localized: "No app on the device can open this link.")
         }
         return output.contains("Error") ? output : nil
+    }
+
+    /// The screen, live, for a window of its own.
+    func liveScreen() -> LiveScreen {
+        LiveScreen(adb: adb, serial: serial)
     }
 
     /// PNG data.

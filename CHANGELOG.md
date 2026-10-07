@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.6.0 — 2026-10-07
+
+- **Live screen** (the first button in a device's header): the device's screen in a window of its
+  own, streamed as H.264 by Android's `screenrecord` straight to the Mac (`adb exec-out`). Nothing
+  is installed or written on the device, and the recorder there ends when the window closes. Click
+  to tap, drag to swipe, scroll, right-click for Back, and use the arrow keys, Return and Esc as
+  the D-pad; Back, Home, Recent apps and the remote are in the window. The window takes the
+  screen's shape, the stream pauses while the window is hidden, and Android's 3-minute limit per
+  recording is bridged by starting the next one. HDMI inputs and protected video show black, and
+  there's no sound.
+- Quitting while a recording runs finishes and saves it first, so its temporary file isn't left on
+  the device.
+- Screenshot and recording file names use the Mac's time zone (they used UTC).
+
 ## 0.5.0 — 2026-10-07
 
 - **Screen recording** (the record button next to Screenshot): records the device's screen

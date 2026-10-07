@@ -93,6 +93,7 @@ final class DeviceStore {
 
     /// The device's page model if it was opened, without creating one.
     func existingDashboard(_ serial: String) -> DashboardModel? { dashboards[serial] }
+    var allDashboards: [DashboardModel] { Array(dashboards.values) }
 
     func dashboard(for serial: String) -> DashboardModel {
         if let model = dashboards[serial] { return model }

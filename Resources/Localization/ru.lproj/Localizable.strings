@@ -63,6 +63,7 @@
 "Cleaning up…" = "Очистка…";
 "Clear" = "Очистить";
 "Click here and type" = "Нажмите здесь и печатайте";
+"Click to tap, drag to swipe, right-click to go back. Arrow keys, Return and Esc work too." = "Щелчок — касание, перетаскивание — свайп, правый щелчок — «Назад». Работают и стрелки, Return и Esc.";
 "Closing the window keeps Sideboard watching your devices from the menu bar, so notifications keep coming and the history keeps growing." = "После закрытия окна Sideboard продолжает следить за устройствами из строки меню: уведомления приходят, история пополняется.";
 "Code name" = "Кодовое имя";
 "Companion app" = "Приложение-компаньон";
@@ -129,6 +130,7 @@
 "Got the device's clipboard." = "Буфер обмена устройства получен.";
 "Governor" = "Регулятор частоты";
 "HDMI inputs and protected video come out black, and there's no sound." = "Входы HDMI и защищённое видео записываются чёрными, звука нет.";
+"HDMI inputs and protected video show black, and there's no sound." = "Входы HDMI и защищённое видео показываются чёрными, звука нет.";
 "Health" = "Состояние";
 "Hidden files" = "Скрытые файлы";
 "History kept on this Mac: %@" = "История на этом Mac: %@";
@@ -167,6 +169,8 @@
 "Left" = "Влево";
 "Leftovers of removed apps" = "Остатки удалённых приложений";
 "Link speed" = "Скорость соединения";
+"Live" = "В эфире";
+"Live Screen" = "Экран в реальном времени";
 "Live typing" = "Ввод в реальном времени";
 "Load average" = "Средняя нагрузка";
 "Loading" = "Загрузка";
@@ -234,6 +238,7 @@
 "Pair" = "Подключить";
 "Paired. Usually it connects by itself in a moment; if not, enter the IP address and port shown under Wireless debugging above." = "Сопряжение выполнено. Обычно устройство само подключается через пару секунд; если нет, введите выше IP-адрес и порт из раздела «Беспроводная отладка».";
 "Paused" = "Пауза";
+"Paused while the window is hidden" = "Приостановлено, пока окно скрыто";
 "Phone or tablet with Wireless debugging (Android 11 and later)" = "Телефон или планшет с беспроводной отладкой (Android 11 и новее)";
 "Play/Pause" = "Воспроизведение/пауза";
 "Playing" = "Играет";
@@ -246,6 +251,7 @@
 "Ran since %@" = "Выполнялись с %@";
 "Reading the apps…" = "Читаем список приложений…";
 "Reading the device…" = "Чтение данных устройства…";
+"Recent apps" = "Недавние приложения";
 "Record Screen" = "Записать экран";
 "Recording since %@ · %lld events kept" = "Запись с %@ · сохранено событий: %lld";
 "Records the device's screen, up to 3 minutes, without sound. HDMI inputs and protected video come out black." = "Записывает экран устройства до 3 минут, без звука. Входы HDMI и защищённое видео будут чёрными.";
@@ -305,6 +311,7 @@
 "Show Folder Sizes" = "Показать размеры папок";
 "Show in Finder" = "Показать в Finder";
 "Showing" = "На экране";
+"Shows the device's screen live in a window, where you can click to tap. HDMI inputs and protected video show black." = "Показывает экран устройства в реальном времени в отдельном окне; щёлкайте, чтобы касаться. Входы HDMI и защищённое видео будут чёрными.";
 "Shut down" = "Выключение";
 "Sideboard is free and open source (MIT License)." = "Sideboard бесплатен и с открытым кодом (лицензия MIT).";
 "Sideboard only reads these settings and never changes them. While the screen is off it checks in once a minute, so the device can rest." = "Sideboard только читает эти настройки и никогда их не меняет. Пока экран выключен, он заглядывает раз в минуту, чтобы устройство могло отдыхать.";
@@ -325,6 +332,7 @@
 "Still on at %@. The screen has been on since %@." = "Всё ещё включено в %@. Экран включён с %@.";
 "Still on at %@." = "Всё ещё включено в %@.";
 "Still on late at night" = "Включено поздно ночью";
+"Still waiting for a picture from the device…" = "Всё ещё ждём изображение с устройства…";
 "Stop recording" = "Остановить запись";
 "Stopped" = "Остановлено";
 "Storage almost full (less than 10% free)" = "Почти нет места (свободно меньше 10%)";
@@ -345,14 +353,17 @@
 "That doesn't look like a link." = "Это не похоже на ссылку.";
 "The app and its data are removed from the device." = "Приложение и его данные будут удалены с устройства.";
 "The device couldn't record its screen." = "Устройство не смогло записать свой экран.";
+"The device couldn't stream its screen." = "Устройство не смогло передать изображение экрана.";
 "The device didn't answer. Check that it's on, on the same network, and that the address is right. If all of that is fine, macOS may be keeping adb off the local network: try Restart adb." = "Устройство не ответило. Проверьте, что оно включено, в той же сети и адрес верный. Если всё так, возможно, macOS не пускает adb в локальную сеть: попробуйте «Перезапустить adb».";
 "The device didn't answer." = "Устройство не ответило.";
 "The device needs this app to work (home screen, keyboard or a core part of Android), so Sideboard won't turn it off or remove it." = "Это приложение нужно устройству для работы (главный экран, клавиатура или основа Android), поэтому Sideboard не отключает и не удаляет его.";
 "The device took too long to answer. Check that it's on and on the same network." = "Устройство слишком долго не отвечало. Проверьте, что оно включено и в той же сети.";
 "The device's clipboard is empty." = "Буфер обмена устройства пуст.";
 "The devices keep their own: Android's last 24 hours, and 90 days with the companion app." = "У устройств остаются свои записи: последние 24 часа Android и 90 дней в приложении-компаньоне.";
+"The live screen stopped." = "Трансляция экрана остановилась.";
 "The recording came out empty." = "Запись получилась пустой.";
 "The screen has been on for %@ in a row." = "Экран включён уже %@ подряд.";
+"The screen is off." = "Экран выключен.";
 "They're removed from the device for good: there's no Trash there." = "Они будут удалены с устройства навсегда: корзины там нет.";
 "Thumbnail caches" = "Кэш миниатюр";
 "Today" = "Сегодня";
@@ -361,6 +372,7 @@
 "Total %@" = "Всего %@";
 "Total" = "Всего";
 "Transfers" = "Передачи";
+"Try Again" = "Повторить";
 "Turn off %@?" = "Отключить %@?";
 "Turn Off" = "Отключить";
 "Turn Off…" = "Отключить…";
@@ -393,6 +405,7 @@
 "Waiting for approval" = "Ожидает разрешения";
 "Waiting" = "Ожидание";
 "Wake up" = "Разбудить";
+"Wake Up" = "Разбудить";
 "Wakes the device" = "Будят устройство";
 "Week" = "Неделя";
 "What you type here goes straight to the device, letter by letter, in any language. Return is Enter; Delete and the arrow keys work when the field is empty." = "Всё, что вы печатаете здесь, сразу попадает на устройство, буква за буквой, на любом языке. Return — это Enter; Delete и стрелки работают, когда поле пустое.";

@@ -9,6 +9,7 @@ struct DashboardView: View {
     @State var page: Page = .overview
 
     @Environment(\.locale) private var locale
+    @Environment(\.openWindow) private var openWindow
     @State private var showingRemote = false
     @State private var screenshot: ScreenshotState?
     @State private var dropTargeted = false
@@ -171,6 +172,12 @@ struct DashboardView: View {
 
     private var actions: some View {
         HStack(spacing: 6) {
+            Button {
+                openWindow(id: LiveScreenWindow.id, value: model.serial)
+            } label: {
+                Label("Live Screen", systemImage: "play.display")
+            }
+            .help(Text("Shows the device's screen live in a window, where you can click to tap. HDMI inputs and protected video show black."))
             Button {
                 showingRemote.toggle()
             } label: {

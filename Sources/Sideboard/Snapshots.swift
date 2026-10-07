@@ -44,6 +44,8 @@ enum Snapshots {
                 let video = URL(fileURLWithPath: ProcessInfo.processInfo.environment["SIDEBOARD_SAMPLE_VIDEO"] ?? "/tmp/Sideboard sample.mp4")
                 let sheets: [(String, AnyView)] = [
                     ("recording", AnyView(RecordingView(url: video) {})),
+                    ("live", AnyView(LiveScreenView(live: LiveScreen(sample: CGSize(width: 1920, height: 1080)), dashboard: .sample)
+                        .frame(width: 800, height: 560))),
                     ("settings", AnyView(SettingsView())),
                     ("menubar", AnyView(MenuBarPanel(store: .sample, monitor: .sample))),
                     ("add", AnyView(AddDeviceView(store: .sample))),

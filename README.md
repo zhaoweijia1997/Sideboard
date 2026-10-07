@@ -8,8 +8,8 @@ See how your Android devices are doing, from your Mac. Sideboard connects to And
 boxes, phones and tablets over adb, by USB or over your home network, and shows everything
 it can read: whether the screen is on, what's showing, what's playing, how long it's been
 running, CPU, memory, storage, network, temperature, and the last 24 hours of screen and
-app use. It manages apps and files, cleans up junk, works as a remote, takes screenshots and
-installs apps.
+app use. It shows the screen live, manages apps and files, cleans up junk, works as a remote,
+takes screenshots and recordings, and installs apps.
 
 Nothing has to be installed on the device. An optional companion app adds months of
 history, app names and icons, and typing in any language.
@@ -18,9 +18,9 @@ history, app names and icons, and typing in any language.
   <img src="docs/screenshots/overview-en-light.png" width="760" alt="Sideboard showing a TV's screen, app, playback, uptime, CPU, memory, storage, network, volume and its last 24 hours">
 </p>
 
-> **Status: early preview (0.5).** Watches your devices from the menu bar with notifications,
-> keeps their history on your Mac, gives them a health checkup, manages apps and files, cleans
-> up, and types in any language with the optional companion app.
+> **Status: early preview (0.6).** Shows your devices' screens live, watches them from the menu
+> bar with notifications, keeps their history on your Mac, gives them a health checkup, manages
+> apps and files, cleans up, and types in any language with the optional companion app.
 
 ## What it shows
 
@@ -134,6 +134,11 @@ its history.
 
 ## What it does (only when you click)
 
+- **Live screen**: the device's screen in a window on your Mac, streamed by Android's own
+  `screenrecord` straight over adb, so nothing is installed or written on the device. Click to
+  tap, drag to swipe, scroll, right-click for Back; arrow keys, Return and Esc work as the D-pad.
+  A new picture comes whenever something on screen changes, usually within a fraction of a
+  second. There's no sound, and HDMI inputs and protected video show black.
 - **Remote**: D-pad, OK, Back, Home, volume, play/pause, sleep and wake. Arrow keys,
   Return, Esc and Space work too.
 - **Screenshot**: the picture comes straight to your Mac and is saved in Pictures →
@@ -157,6 +162,8 @@ its history.
   screen is off, it checks once a minute whether it came back on, so the device can rest.
   With the window closed, it reads nothing.
 - The Details page samples processes only while it's open.
+- The live screen streams only while its window can be seen, and the recorder on the device
+  ends as soon as the window closes.
 - Network devices are reconnected once a minute when they're off the network, which
   doesn't wake them.
 - Nothing leaves your Mac: no accounts, no analytics. Screenshots in this README use
@@ -230,7 +237,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 - [x] Files and cleanup (0.2)
 - [x] Menu bar mode and notifications, history on the Mac, health checkup (0.4)
 - [x] Screen recording (0.5)
-- [ ] Live screen view
+- [x] Live screen view (0.6)
 - [ ] Update reminders for open-source apps; export an app list to set up a new device
 
 ## Support Sideboard

@@ -21,6 +21,16 @@ struct SideboardApp: App {
         }
         .defaultSize(width: 1040, height: 780)
 
+        WindowGroup(Text("Live Screen"), id: LiveScreenWindow.id, for: String.self) { $serial in
+            if let serial {
+                LiveScreenWindow(serial: serial)
+                    .environment(\.locale, language.locale)
+            }
+        }
+        .defaultSize(width: 960, height: 640)
+        // No "New Live Screen Window" in the File menu: a live screen always belongs to a device.
+        .commandsRemoved()
+
         Settings {
             SettingsView()
                 .environment(\.locale, language.locale)
@@ -98,6 +108,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             NSApp.setActivationPolicy(.regular)
             NSApp.activate(ignoringOtherApps: true)
         }
+    }
+
+    /// A recording still running is finished and saved first, so its file isn't left on the device.
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        let recorders = MainActor.assumeIsolated { AppModels.shared.store.allDashboards.map(\.recorder).filter(\.isBusy) }
+        guard !recorders.isEmpty else { return .terminateNow }
+        Task { @MainActor in
+            await ScreenRecorder.finishAll(recorders)
+            NSApp.reply(toApplicationShouldTerminate: true)
+        }
+        return .terminateLater
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        LiveStream.stopAll()
     }
 
     /// In background mode, closing the window keeps Sideboard in the menu bar.

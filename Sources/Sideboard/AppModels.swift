@@ -105,11 +105,16 @@ final class AppModels {
 /// window is closed.
 @MainActor
 enum DockIcon {
+    /// The main window and live screens.
+    private static var openWindows = 0
+
     static func windowOpened() {
+        openWindows += 1
         NSApp.setActivationPolicy(.regular)
     }
 
     static func windowClosed() {
-        if AppSettings.backgroundMode { NSApp.setActivationPolicy(.accessory) }
+        openWindows = max(0, openWindows - 1)
+        if openWindows == 0 && AppSettings.backgroundMode { NSApp.setActivationPolicy(.accessory) }
     }
 }

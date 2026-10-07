@@ -99,6 +99,17 @@ final class ScreenRecorder {
         state = .idle
     }
 
+    /// Stops and saves every recording still going, and waits for those being saved: when
+    /// Sideboard quits, so no recording is left on a device.
+    static func finishAll(_ recorders: [ScreenRecorder]) async {
+        for _ in 0..<300 {
+            let busy = recorders.filter(\.isBusy)
+            if busy.isEmpty { return }
+            for recorder in busy where recorder.isRecording { await recorder.stop() }
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+    }
+
     private func received(_ text: String) {
         output += text
         if pid == nil, let match = output.firstMatch(of: /SIDEBOARD_PID=(\d+)/) {
@@ -158,7 +169,7 @@ final class ScreenRecorder {
     }
 
     static func fileName(_ name: String?, date: Date = Date()) -> String {
-        let stamp = date.formatted(.iso8601.year().month().day().dateSeparator(.dash).time(includingFractionalSeconds: false).timeSeparator(.omitted))
+        let stamp = Formats.fileStamp(date)
         return "\(name ?? "Android") \(stamp).mp4".replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: ":", with: "-")
     }
 }

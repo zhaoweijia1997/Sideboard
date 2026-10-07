@@ -46,6 +46,13 @@ struct Formats {
                 .formatted(.measurement(width: .abbreviated, numberFormatStyle: .number.precision(.fractionLength(0))).locale(locale))
     }
 
+    /// "2026-10-07T231509", in the Mac's time zone, for file names. ISO 8601 styles use UTC
+    /// unless they're given a time zone.
+    static func fileStamp(_ date: Date) -> String {
+        date.formatted(Date.ISO8601FormatStyle(timeZone: .current).year().month().day().dateSeparator(.dash)
+            .time(includingFractionalSeconds: false).timeSeparator(.omitted))
+    }
+
     func temperature(_ celsius: Double) -> String {
         Measurement(value: celsius, unit: UnitTemperature.celsius)
             .formatted(.measurement(width: .abbreviated, usage: .asProvided, numberFormatStyle: .number.precision(.fractionLength(0))).locale(locale))

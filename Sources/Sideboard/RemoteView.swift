@@ -79,7 +79,7 @@ struct ScreenshotState: Identifiable {
 
     /// Saves into Pictures → Sideboard. Returns where, or nil if it couldn't.
     func save(_ data: Data, deviceName: String?) -> URL? {
-        let stamp = date.formatted(.iso8601.year().month().day().dateSeparator(.dash).time(includingFractionalSeconds: false).timeSeparator(.omitted))
+        let stamp = Formats.fileStamp(date)
         let name = "\(deviceName ?? "Android") \(stamp).png".replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: ":", with: "-")
         let url = Self.folder.appending(path: name)
         do {
