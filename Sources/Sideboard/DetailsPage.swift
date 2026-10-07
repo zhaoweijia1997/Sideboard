@@ -109,7 +109,7 @@ struct DetailsPage: View {
     /// App processes are named after their package, sometimes with ":service" after it.
     private func processName(_ name: String, home: String?) -> Text {
         let package = String(name.prefix { $0 != ":" })
-        return AppNames.isNamed(package, home: home) ? AppNames.text(for: package, home: home) : Text(verbatim: name)
+        return AppNames.isNamed(package, home: home, labels: model.labels) ? AppNames.text(for: package, home: home, labels: model.labels) : Text(verbatim: name)
     }
 
     private func memorySection(_ details: DeviceDetails, _ status: DeviceStatus) -> some View {

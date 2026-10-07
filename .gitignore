@@ -3,3 +3,10 @@ build.noindex/
 .swiftpm/
 .DS_Store
 snapshots/
+
+# Android companion
+android/local.properties
+android/.gradle/
+android/.kotlin/
+android/build/
+android/app/build/

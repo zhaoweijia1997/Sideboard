@@ -15,7 +15,7 @@ enum Snapshots {
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         for language in AppLanguage.allCases where language != .system {
             let pages: [(String, DeviceStore, DashboardView.Page, CGFloat)] = [
-                ("overview", .sample, .overview, 1060),
+                ("overview", .sample, .overview, 1400),
                 ("details", .sample, .details, 1400),
                 ("apps", .sample, .apps, size.height),
                 ("files", .sample, .files, size.height),
@@ -177,7 +177,17 @@ extension DashboardModel {
 
         // Relative to now, matching the uptime above: started 9 h 42 min ago, screen on for the last hour.
         func ago(_ hours: Int, _ minutes: Int) -> Date { Date().addingTimeInterval(-Double(hours * 3600 + minutes * 60)) }
-        let timeline = Timeline(events: [
+        // A week of evenings before that, as the companion app would have kept them.
+        var week: [Timeline.Event] = []
+        let midnight = Calendar.current.startOfDay(for: Date())
+        for day in 2...7 {
+            let start = midnight.addingTimeInterval(Double(-day * 86_400) + Double(18 + day % 3) * 3600)
+            week.append(.init(date: start, kind: .screenOn))
+            week.append(.init(date: start.addingTimeInterval(60), kind: .app(day % 2 == 0 ? "com.netflix.ninja" : "com.google.android.youtube.tv")))
+            week.append(.init(date: start.addingTimeInterval(Double(2 + day % 4) * 3600), kind: .screenOff))
+        }
+        let timeline = Timeline.combine(week + [
+            .init(date: ago(23, 30), kind: .screenOn),
             .init(date: ago(22, 0), kind: .app("com.netflix.ninja")),
             .init(date: ago(20, 30), kind: .screenOff),
             .init(date: ago(11, 0), kind: .screenOn),
@@ -188,13 +198,15 @@ extension DashboardModel {
             .init(date: ago(1, 12), kind: .screenOn),
             .init(date: ago(1, 11), kind: .app("com.android.tv.settings")),
             .init(date: ago(1, 6), kind: .app("com.google.android.youtube.tv")),
-        ])
+        ], bootDate: nil)
         return DashboardModel(sample: status, cpuUsage: 0.27, timeline: timeline, details: details,
                               transfers: [
                                   Transfer(name: "Holiday Photos.zip", kind: .send(folder: Adb.downloadFolder), state: .done),
                                   Transfer(name: "MediaPlayer-2.4.apk", kind: .install, state: .running),
                               ],
-                              apps: .sample, files: .sample, cleanup: .sample)
+                              apps: .sample, files: .sample, cleanup: .sample,
+                              companion: Companion.Info(version: "1.0", since: Date().addingTimeInterval(-20 * 86_400), events: 2_416,
+                                                        usageAccess: true))
     }
 }
 

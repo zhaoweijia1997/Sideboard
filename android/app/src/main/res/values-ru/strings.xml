@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="keyboard_name">Клавиатура Sideboard (ввод с Mac)</string>
+    <string name="main_body">Sideboard на Mac через adb читает историю экрана, питания и приложений этого устройства и может вводить на нём текст. Это приложение хранит историю 90 дней. Ничего никуда не отправляется, настройки не меняются.</string>
+    <string name="status">Запись с %1$s · сохранено событий: %2$d</string>
+    <string name="access_allowed">Доступ к истории использования: разрешён</string>
+    <string name="access_missing">Доступ к истории использования не разрешён, поэтому новое не записывается. Sideboard на Mac разрешает его при установке этого приложения; можно также разрешить в настройках.</string>
+    <string name="open_settings">Открыть настройки</string>
+    <string name="test_field">Попробуйте ввести сюда текст из Sideboard</string>
+</resources>

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name" translatable="false">Sideboard</string>
+    <string name="keyboard_name">Sideboard keyboard (typing from your Mac)</string>
+    <string name="main_body">Sideboard on your Mac reads this device\'s screen, power and app history over adb, and can type text into it. This app keeps that history for 90 days. Nothing is sent anywhere else, and no settings are changed.</string>
+    <string name="status">Recording since %1$s · %2$d events kept</string>
+    <string name="access_allowed">Usage access: allowed</string>
+    <string name="access_missing">Usage access: not allowed, so nothing new is recorded. Sideboard on your Mac allows it when it installs this app; you can also allow it in Settings.</string>
+    <string name="open_settings">Open Settings</string>
+    <string name="test_field">Try typing here from Sideboard</string>
+</resources>

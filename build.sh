@@ -21,6 +21,8 @@ cp "$BIN" "$APP/Contents/MacOS/Sideboard"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
 cp -R Resources/Localization/*.lproj "$APP/Contents/Resources/"
 [[ -f Resources/AppIcon.icns ]] && cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
+# The Android companion app, installed on devices from Sideboard (tools/build-companion.sh rebuilds it).
+[[ -f Resources/SideboardCompanion.apk ]] && cp Resources/SideboardCompanion.apk Resources/SideboardCompanion.version "$APP/Contents/Resources/"
 codesign --force --sign - "$APP"
 LSREGISTER=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
 "$LSREGISTER" -u "$PWD/$APP" 2>/dev/null || true

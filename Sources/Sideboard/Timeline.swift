@@ -1,7 +1,8 @@
 import Foundation
 
-/// What happened on the device in the last 24 hours, from Android's own usage history
-/// (`dumpsys usagestats`). Covers the time Sideboard wasn't running, too.
+/// What happened on the device: power, screen and apps. Comes from Android's own usage history
+/// (`dumpsys usagestats`, the last 24 hours, so it covers the time Sideboard wasn't running) and,
+/// with the companion app installed, from the 90 days it keeps.
 struct Timeline: Equatable, Sendable {
     struct Event: Equatable, Sendable, Identifiable {
         enum Kind: Equatable, Sendable {
@@ -28,45 +29,50 @@ struct Timeline: Equatable, Sendable {
     ///     time="2026-10-07 11:11:51" type=SCREEN_INTERACTIVE package=android flags=0x0
     ///     time="2026-10-07 11:34:48" type=ACTIVITY_RESUMED package=com.example.app class=…
     ///
-    /// Times are in the device's time zone. `bootDate` adds a startup event when the device's
-    /// own history doesn't have one.
-    static func parse(_ output: String, timeZone: TimeZone, bootDate: Date?, now: Date = Date()) -> Timeline {
+    /// Times are in the device's time zone.
+    static func events(from output: String, timeZone: TimeZone) -> [Event] {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.timeZone = timeZone
         formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
-
-        var events: [Event] = []
-        var seen = Set<String>()
-        for line in output.split(separator: "\n") {
+        return output.split(separator: "\n").compactMap { line in
             guard let match = line.firstMatch(of: /time="([^"]+)" type=(\w+) package=(\S+)/),
-                  let date = formatter.date(from: String(match.1)) else { continue }
-            // The dump can list the same event in more than one section.
-            guard seen.insert("\(match.1) \(match.2) \(match.3)").inserted else { continue }
-            let kind: Event.Kind
+                  let date = formatter.date(from: String(match.1)) else { return nil }
             switch match.2 {
-            case "SCREEN_INTERACTIVE": kind = .screenOn
-            case "SCREEN_NON_INTERACTIVE": kind = .screenOff
-            case "DEVICE_STARTUP": kind = .startup
-            case "DEVICE_SHUTDOWN": kind = .shutdown
-            default:
-                // System dialogs, such as the debugging prompt, aren't apps people opened.
-                guard match.3 != "com.android.systemui" else { continue }
-                kind = .app(String(match.3))
+            case "SCREEN_INTERACTIVE": return Event(date: date, kind: .screenOn)
+            case "SCREEN_NON_INTERACTIVE": return Event(date: date, kind: .screenOff)
+            case "DEVICE_STARTUP": return Event(date: date, kind: .startup)
+            case "DEVICE_SHUTDOWN": return Event(date: date, kind: .shutdown)
+            default: return Event(date: date, kind: .app(String(match.3)))
             }
-            events.append(Event(date: date, kind: kind))
         }
-        events.sort { $0.date < $1.date }
+    }
 
-        if let bootDate, now.timeIntervalSince(bootDate) < 86_400,
-           !events.contains(where: { $0.kind == .startup && abs($0.date.timeIntervalSince(bootDate)) < 300 }) {
-            let index = events.firstIndex { $0.date > bootDate } ?? events.endIndex
-            events.insert(Event(date: bootDate, kind: .startup), at: index)
+    static func parse(_ output: String, timeZone: TimeZone, bootDate: Date?, now: Date = Date()) -> Timeline {
+        combine(events(from: output, timeZone: timeZone), bootDate: bootDate, now: now)
+    }
+
+    /// Puts events from any source in order: drops duplicates (the dump lists some events twice,
+    /// and the companion's copy overlaps Android's), adds a startup at `bootDate` when none is
+    /// near it, and merges repeats of the same app.
+    static func combine(_ events: [Event], bootDate: Date?, now: Date = Date()) -> Timeline {
+        var seen = Set<String>()
+        var sorted = events.filter { event in
+            // System dialogs, such as the debugging prompt, aren't apps people opened.
+            if case let .app(package) = event.kind, package == "com.android.systemui" || package.isEmpty { return false }
+            return seen.insert("\(Int(event.date.timeIntervalSince1970)) \(event.kind)").inserted
+        }
+        .sorted { $0.date < $1.date }
+
+        if let bootDate, bootDate < now,
+           !sorted.contains(where: { $0.kind == .startup && abs($0.date.timeIntervalSince(bootDate)) < 300 }) {
+            let index = sorted.firstIndex { $0.date > bootDate } ?? sorted.endIndex
+            sorted.insert(Event(date: bootDate, kind: .startup), at: index)
         }
 
         var merged: [Event] = []
         var lastApp: String?
-        for event in events {
+        for event in sorted {
             if case let .app(package) = event.kind {
                 if package == lastApp { continue }
                 lastApp = package
@@ -74,14 +80,27 @@ struct Timeline: Equatable, Sendable {
                 // After the screen comes back, the same app opening again is worth showing.
                 lastApp = nil
             }
+            // A startup a few minutes after another one is the same start (Android's and the companion's).
+            if event.kind == .startup, let previous = merged.last(where: { $0.kind == .startup }),
+               event.date.timeIntervalSince(previous.date) < 300 { continue }
             merged.append(event)
         }
         return Timeline(events: merged)
     }
 
-    /// How long the screen has been on since `start` (midnight, normally).
-    /// Before the first screen event, the screen was in the opposite state of that event.
-    func screenOnTime(since start: Date, now: Date = Date(), screenIsOn: Bool? = nil) -> TimeInterval {
+    /// Days with events, newest first (midnight of each).
+    var days: [Date] {
+        var result: [Date] = []
+        for event in events.reversed() {
+            let day = Calendar.current.startOfDay(for: event.date)
+            if result.last != day { result.append(day) }
+        }
+        return result
+    }
+
+    /// How long the screen was on between `start` and `end`. Before the first screen event,
+    /// the screen was in the opposite state of that event.
+    func screenOnTime(from start: Date, to end: Date, screenIsOn: Bool? = nil) -> TimeInterval {
         let screenEvents = events.filter { [.screenOn, .screenOff, .startup, .shutdown].contains($0.kind) }
         var on: Bool
         if let first = screenEvents.first {
@@ -92,6 +111,7 @@ struct Timeline: Equatable, Sendable {
         var total: TimeInterval = 0
         var mark = start
         for event in screenEvents {
+            if event.date >= end { break }
             if event.date > start {
                 if on { total += event.date.timeIntervalSince(max(mark, start)) }
                 mark = event.date
@@ -104,21 +124,23 @@ struct Timeline: Equatable, Sendable {
             case .app: break
             }
         }
-        if on, now > max(mark, start) { total += now.timeIntervalSince(max(mark, start)) }
+        if on, end > max(mark, start) { total += end.timeIntervalSince(max(mark, start)) }
         return total
     }
 
-    /// Time in front per app since `start`, while the screen was on, longest first.
-    func appTime(since start: Date, now: Date = Date()) -> [(package: String, time: TimeInterval)] {
+    /// Time in front per app between `start` and `end`, while the screen was on, longest first.
+    func appTime(from start: Date, to end: Date) -> [(package: String, time: TimeInterval)] {
         var totals: [String: TimeInterval] = [:]
         var current: (package: String, since: Date)?
         func close(at date: Date) {
-            if let current, date > start {
+            let date = min(date, end)
+            if let current, date > start, date > current.since {
                 totals[current.package, default: 0] += date.timeIntervalSince(max(current.since, start))
             }
             current = nil
         }
         for event in events {
+            if event.date >= end { break }
             switch event.kind {
             case let .app(package):
                 close(at: event.date)
@@ -129,7 +151,7 @@ struct Timeline: Equatable, Sendable {
                 break
             }
         }
-        close(at: now)
+        close(at: end)
         return totals.filter { $0.value >= 60 }.map { ($0.key, $0.value) }.sorted { $0.time > $1.time }
     }
 }

@@ -4,6 +4,7 @@ import SwiftUI
 struct CleanupPage: View {
     let model: CleanupModel
     let home: String?
+    var labels: [String: String] = [:]
 
     @Environment(\.locale) private var locale
     @State private var expanded: Set<String> = []
@@ -159,7 +160,7 @@ struct CleanupPage: View {
             }
             Group {
                 if kind == .appCaches {
-                    AppNames.text(for: entry.path, home: home)
+                    AppNames.text(for: entry.path, home: home, labels: labels)
                 } else {
                     Text(verbatim: entry.path.replacingOccurrences(of: "/sdcard/", with: ""))
                 }

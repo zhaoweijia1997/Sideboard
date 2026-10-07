@@ -11,14 +11,15 @@ running, CPU, memory, storage, network, temperature, and the last 24 hours of sc
 app use. It manages apps and files, cleans up junk, works as a remote, takes screenshots and
 installs apps.
 
-Nothing has to be installed on the device.
+Nothing has to be installed on the device. An optional companion app adds months of
+history, app names and icons, and typing in any language.
 
 <p align="center">
   <img src="docs/screenshots/overview-en-light.png" width="760" alt="Sideboard showing a TV's screen, app, playback, uptime, CPU, memory, storage, network, volume and its last 24 hours">
 </p>
 
-> **Status: early preview (0.2).** Watches your devices, manages apps and files, and cleans up.
-> See the roadmap for what's next.
+> **Status: early preview (0.3).** Watches your devices, manages apps and files, cleans up, and
+> with the optional companion app keeps 90 days of history and types in any language.
 
 ## What it shows
 
@@ -67,6 +68,30 @@ choose what and confirm.
 
 <p align="center">
   <img src="docs/screenshots/cleanup-en-light.png" width="760" alt="The Clean Up page">
+</p>
+
+## The companion app (optional)
+
+Everything above works over adb alone. The small companion app (about 120 KB, source in
+[`android/`](android/)) adds what adb can't do. Install it from the Overview page; Sideboard
+installs it over adb and allows the one permission it needs (usage access), so you don't have
+to find it in Settings with a remote.
+
+- **90 days of history**: power on and off, screen on and off, and apps opened, recorded even
+  while your Mac is off. The Overview shows screen time per day for the last week; pick any
+  day to see what happened.
+- **App names and icons** on the Apps page and everywhere else.
+- **Type text in any language** and use the device's **clipboard** from your Mac (the keyboard
+  button). While the typing window is open, the device uses the companion's keyboard, which
+  shows nothing on screen; closing the window switches back to the device's own keyboard.
+
+It runs no background service: a scheduled job copies Android's own usage history a few
+times a day, which takes a moment. It doesn't ask for internet access, changes no settings,
+and only the adb shell can read what it keeps. Uninstalling it (Overview page) removes it and
+its history.
+
+<p align="center">
+  <img src="docs/screenshots/overview-en-light.png" width="760" alt="A week of screen time and the history of one day">
 </p>
 
 ## What it does (only when you click)
@@ -138,6 +163,9 @@ reads from each connected device, without serial numbers, addresses or network n
 `--snapshot <folder>` renders the window in every language, light and dark, with made-up
 devices.
 
+The companion app is bundled as `Resources/SideboardCompanion.apk`. To rebuild it you need
+Android Studio and the Android SDK: `tools/build-companion.sh` (see [android/README.md](android/README.md)).
+
 ## Languages
 
 English, 简体中文, 繁體中文, 日本語, Русский, Español, हिन्दी — switch any time from the
@@ -148,9 +176,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Roadmap
 
-- [ ] Companion app on the device (optional): history longer than 24 hours, exact power-on
-      and power-off times recorded even while the Mac is off, typing text in any language,
-      a shared clipboard, app names instead of package names
+- [x] Companion app on the device (optional): 90 days of history, typing in any language,
+      clipboard, app names and icons (0.3)
 - [x] Apps: list, uninstall, turn off preinstalled apps (reversibly) (0.2)
 - [x] Files and cleanup (0.2)
 - [ ] Menu bar mode and notifications (for example when a device has been on all night)

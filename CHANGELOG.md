@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.3.0 — 2026-10-07
+
+- **Companion app** (optional, `android/`, about 120 KB), installed from the Overview page.
+  Sideboard installs it over adb and allows usage access, so nothing has to be set up on the
+  device. It keeps 90 days of power, screen and app history (copied from Android's usage
+  events by a job a few times a day; no background service), and gives app names and icons.
+  Uninstall removes it with its history.
+- **History**: with the companion, a week of screen time per day, and any day's events.
+  Without it, the last 24 hours as before.
+- **Type Text** (keyboard button): type in any language, Return and Delete, send text to the
+  device's clipboard or get it from there. While the window is open the device uses the
+  companion's invisible keyboard; closing it restores the device's own keyboard and turns the
+  companion's off again. Text travels base64-encoded, so nothing is interpreted by the shell.
+- The Apps page shows app icons and names from the companion.
+- While a device sleeps, the history is refreshed every 30 minutes instead of 10.
+- `--status` also reports the companion app.
+
 ## 0.2.0 — 2026-10-07
 
 - **Apps** page: every app with version, last update and size (from Android's storage

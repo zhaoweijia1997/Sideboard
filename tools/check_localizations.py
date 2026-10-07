@@ -39,6 +39,7 @@ SWIFT_PATTERNS = [
     re.compile(r"\bbadge: .*?" + LITERAL),
     re.compile(r"String\(localized: " + LITERAL),
     re.compile(r"\bInfoRow\(" + LITERAL),
+    re.compile(r"\bshow\(" + LITERAL),
     re.compile(r"\bkey\(\.\w+, \"[^\"]*\", " + LITERAL),
     re.compile(r"\? " + LITERAL + r" :"),
     re.compile(r" : " + LITERAL + r"[,)]"),
@@ -105,6 +106,12 @@ def main():
             continue
         if literal and literal not in NOT_LOCALIZED and literal not in english_shapes:
             problems.append(f"{file}: no translation key for {literal!r}")
+
+    # Keys nothing uses any more (after rewording or removing a string).
+    used = {re.sub(r"%(?:\d+\$)?(?:@|l{0,2}[duxXf])", "%", literal) for literal, _ in swift_keys()}
+    for key in english:
+        if PLACEHOLDER.sub("%", key) not in used:
+            problems.append(f"en: unused key {key!r}")
 
     for problem in problems:
         print(problem)

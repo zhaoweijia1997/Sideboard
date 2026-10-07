@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="keyboard_name">Sideboard कीबोर्ड (Mac से टाइप करें)</string>
+    <string name="main_body">आपके Mac पर Sideboard adb के ज़रिए इस डिवाइस की स्क्रीन, पावर और ऐप का इतिहास पढ़ता है, और इसमें टेक्स्ट टाइप कर सकता है। यह ऐप वह इतिहास 90 दिन तक रखता है। कुछ भी कहीं और नहीं भेजा जाता, और कोई सेटिंग नहीं बदली जाती।</string>
+    <string name="status">%1$s से रिकॉर्ड हो रहा है · %2$d इवेंट रखे गए</string>
+    <string name="access_allowed">उपयोग की जानकारी तक पहुँच: अनुमति है</string>
+    <string name="access_missing">उपयोग की जानकारी तक पहुँच: अनुमति नहीं है, इसलिए कुछ नया रिकॉर्ड नहीं होता। Mac पर Sideboard इस ऐप को इंस्टॉल करते समय अनुमति दे देता है; आप सेटिंग में भी दे सकते हैं।</string>
+    <string name="open_settings">सेटिंग खोलें</string>
+    <string name="test_field">यहाँ Sideboard से टाइप करके देखें</string>
+</resources>

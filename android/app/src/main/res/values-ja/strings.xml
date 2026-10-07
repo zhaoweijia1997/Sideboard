@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="keyboard_name">Sideboard キーボード（Mac から入力）</string>
+    <string name="main_body">Mac の Sideboard は adb を使って、このデバイスの画面・電源・アプリの使用履歴を読み取り、文字を入力することもできます。このアプリは履歴を 90 日間保存します。ほかのどこにも送信せず、設定も変更しません。</string>
+    <string name="status">%1$s から記録中 · %2$d 件保存</string>
+    <string name="access_allowed">使用状況へのアクセス：許可済み</string>
+    <string name="access_missing">使用状況へのアクセス：許可されていないため、新しい記録は残りません。Mac の Sideboard がこのアプリをインストールするときに許可します。設定から許可することもできます。</string>
+    <string name="open_settings">設定を開く</string>
+    <string name="test_field">Sideboard からここに入力してみてください</string>
+</resources>

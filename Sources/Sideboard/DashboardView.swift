@@ -12,6 +12,12 @@ struct DashboardView: View {
     @State private var showingRemote = false
     @State private var screenshot: ScreenshotState?
     @State private var dropTargeted = false
+    @State private var typing: TypingHandle?
+
+    private struct TypingHandle: Identifiable {
+        let id = UUID()
+        let session: TypingSession
+    }
 
     private var formats: Formats { Formats(locale: locale) }
 
@@ -52,7 +58,7 @@ struct DashboardView: View {
             case .files:
                 FilesPage(model: model.files, dashboard: model)
             case .cleanup:
-                CleanupPage(model: model.cleanup, home: model.status?.home)
+                CleanupPage(model: model.cleanup, home: model.status?.home, labels: model.labels)
             }
             if !model.transfers.isEmpty {
                 Divider()
@@ -80,6 +86,9 @@ struct DashboardView: View {
         }
         .sheet(item: $screenshot) { state in
             ScreenshotView(state: state)
+        }
+        .sheet(item: $typing) { handle in
+            TypingView(session: handle.session)
         }
     }
 
@@ -137,6 +146,13 @@ struct DashboardView: View {
             .popover(isPresented: $showingRemote, arrowEdge: .bottom) {
                 RemoteView(model: model)
             }
+            Button {
+                if let session = model.typingSession() { typing = TypingHandle(session: session) }
+            } label: {
+                Label("Type Text", systemImage: "keyboard")
+            }
+            .disabled(model.companion == nil)
+            .help(model.companion == nil ? Text("Install the companion app (Overview) to type text in any language.") : Text("Type Text"))
             Button {
                 takeScreenshot()
             } label: {
@@ -206,6 +222,7 @@ private struct OverviewPage: View {
                     }
                 }
                 TimelineSection(model: model)
+                CompanionSection(model: model)
             } else {
                 HStack {
                     ProgressView().controlSize(.small)
@@ -226,7 +243,7 @@ private struct OverviewPage: View {
             case nil: BigValue(verbatim: "–")
             }
             if let timeline = model.timeline {
-                let onTime = timeline.screenOnTime(since: Calendar.current.startOfDay(for: Date()), screenIsOn: status.screen == .on)
+                let onTime = timeline.screenOnTime(from: Calendar.current.startOfDay(for: Date()), to: Date(), screenIsOn: status.screen == .on)
                 Text("On for \(formats.duration(onTime)) today")
                     .font(.callout)
                     .foregroundStyle(.secondary)
@@ -237,8 +254,8 @@ private struct OverviewPage: View {
     private func showingCard(_ status: DeviceStatus) -> some View {
         Card(title: status.screen == .on ? "Showing" : "Last app", systemImage: "rectangle.on.rectangle") {
             if let package = status.foreground {
-                BigValue(AppNames.text(for: package, home: status.home))
-                if AppNames.isNamed(package, home: status.home) {
+                BigValue(AppNames.text(for: package, home: status.home, labels: model.labels))
+                if AppNames.isNamed(package, home: status.home, labels: model.labels) {
                     Text(verbatim: package)
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -265,7 +282,7 @@ private struct OverviewPage: View {
                     if let title = media.title {
                         Text(verbatim: title).lineLimit(1)
                     }
-                    AppNames.text(for: media.package, home: status.home)
+                    AppNames.text(for: media.package, home: status.home, labels: model.labels)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
@@ -403,34 +420,25 @@ private struct TimelineSection: View {
     let model: DashboardModel
 
     @Environment(\.locale) private var locale
+    @State private var day = Calendar.current.startOfDay(for: Date())
     @State private var showingAll = false
     private let shortList = 25
+
     private var formats: Formats { Formats(locale: locale) }
+    private var labels: [String: String] { model.labels }
 
     var body: some View {
-        Card(title: "Last 24 hours", systemImage: "calendar.day.timeline.left") {
+        Card(title: model.companion != nil ? "History" : "Last 24 hours", systemImage: "calendar.day.timeline.left") {
             if let timeline = model.timeline {
-                let start = Calendar.current.startOfDay(for: Date())
-                let apps = timeline.appTime(since: start).prefix(4)
-                if !apps.isEmpty {
-                    HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        Text("Most used today:")
-                            .foregroundStyle(.secondary)
-                        ForEach(apps, id: \.package) { app in
-                            (AppNames.text(for: app.package, home: model.status?.home)
-                                + Text(verbatim: " ") + Text(verbatim: formats.duration(app.time)).foregroundColor(.secondary))
-                                .lineLimit(1)
-                                .padding(.horizontal, 7)
-                                .padding(.vertical, 2)
-                                .background(Color.primary.opacity(0.06), in: Capsule())
-                        }
-                    }
-                    .font(.callout)
-                    .padding(.bottom, 4)
+                let days = availableDays(timeline)
+                if days.count > 2 {
+                    ScreenTimeChart(timeline: timeline, days: Array(days.prefix(7)).reversed(), selected: $day)
+                        .padding(.bottom, 6)
                 }
+                dayHeader(timeline, days: days)
                 let shown = visibleEvents(timeline)
                 if shown.isEmpty {
-                    Text("Nothing recorded in the last 24 hours.").foregroundStyle(.secondary)
+                    Text("Nothing recorded on this day.").foregroundStyle(.secondary)
                 } else {
                     events(Array(shown.prefix(showingAll ? shown.count : shortList)))
                     if shown.count > shortList {
@@ -439,10 +447,16 @@ private struct TimelineSection: View {
                             .padding(.top, 4)
                     }
                 }
-                Text("From the device's own usage history, so it includes times when Sideboard wasn't open.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .padding(.top, 4)
+                Group {
+                    if model.companion != nil {
+                        Text("From the companion app on the device, which keeps 90 days.")
+                    } else {
+                        Text("From the device's own usage history, so it includes times when Sideboard wasn't open. Install the companion app to keep more than a day.")
+                    }
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .padding(.top, 4)
             } else {
                 HStack {
                     ProgressView().controlSize(.small)
@@ -450,13 +464,64 @@ private struct TimelineSection: View {
                 }
             }
         }
+        .onChange(of: day) { showingAll = false }
     }
 
-    /// Newest first. Going back to the home screen happens all the time on phones and isn't
-    /// worth a line; it still counts in "Most used".
+    /// Today first, then every earlier day with events.
+    private func availableDays(_ timeline: Timeline) -> [Date] {
+        let today = Calendar.current.startOfDay(for: Date())
+        return [today] + timeline.days.filter { $0 != today }
+    }
+
+    private func dayHeader(_ timeline: Timeline, days: [Date]) -> some View {
+        let end = min(Date(), Calendar.current.date(byAdding: .day, value: 1, to: day) ?? Date())
+        let onTime = timeline.screenOnTime(from: day, to: end, screenIsOn: model.status?.screen == .on)
+        let apps = timeline.appTime(from: day, to: end).prefix(4)
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 10) {
+                Picker(selection: $day) {
+                    ForEach(days, id: \.self) { date in
+                        dayName(date).tag(date)
+                    }
+                } label: {
+                    EmptyView()
+                }
+                .labelsHidden()
+                .fixedSize()
+                Text("Screen on \(formats.duration(onTime))")
+                    .foregroundStyle(.secondary)
+            }
+            if !apps.isEmpty {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text("Most used:")
+                        .foregroundStyle(.secondary)
+                    ForEach(apps, id: \.package) { app in
+                        (AppNames.text(for: app.package, home: model.status?.home, labels: labels)
+                            + Text(verbatim: " ") + Text(verbatim: formats.duration(app.time)).foregroundColor(.secondary))
+                            .lineLimit(1)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 2)
+                            .background(Color.primary.opacity(0.06), in: Capsule())
+                    }
+                }
+                .font(.callout)
+            }
+        }
+        .padding(.bottom, 4)
+    }
+
+    private func dayName(_ date: Date) -> Text {
+        if Calendar.current.isDateInToday(date) { return Text("Today") }
+        if Calendar.current.isDateInYesterday(date) { return Text("Yesterday") }
+        return Text(verbatim: date.formatted(.dateTime.weekday(.abbreviated).month().day().locale(locale)))
+    }
+
+    /// The chosen day, newest first. Going back to the home screen happens all the time on phones
+    /// and isn't worth a line; it still counts in "Most used".
     private func visibleEvents(_ timeline: Timeline) -> [Timeline.Event] {
         let home = model.status?.home
         return timeline.events.reversed().filter { event in
+            guard Calendar.current.isDate(event.date, inSameDayAs: day) else { return false }
             if case let .app(package) = event.kind { return package != home && !AppNames.homeScreens.contains(package) }
             return true
         }
@@ -464,22 +529,7 @@ private struct TimelineSection: View {
 
     private func events(_ events: [Timeline.Event]) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            ForEach(Array(events.enumerated()), id: \.element.id) { index, event in
-                if index == 0 || !Calendar.current.isDate(event.date, inSameDayAs: events[index - 1].date) {
-                    Group {
-                        if Calendar.current.isDateInToday(event.date) {
-                            Text("Today")
-                        } else if Calendar.current.isDateInYesterday(event.date) {
-                            Text("Yesterday")
-                        } else {
-                            Text(verbatim: event.date.formatted(.dateTime.month().day().locale(locale)))
-                        }
-                    }
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .padding(.top, index == 0 ? 2 : 10)
-                    .padding(.bottom, 4)
-                }
+            ForEach(events) { event in
                 HStack(spacing: 10) {
                     Text(verbatim: formats.time(event.date))
                         .monospacedDigit()
@@ -504,7 +554,7 @@ private struct TimelineSection: View {
         case .shutdown: Text("Shut down")
         case .screenOn: Text("Screen on")
         case .screenOff: Text("Screen off")
-        case let .app(package): Text("Opened \(AppNames.text(for: package, home: model.status?.home))")
+        case let .app(package): Text("Opened \(AppNames.text(for: package, home: model.status?.home, labels: labels))")
         }
     }
 
@@ -526,6 +576,56 @@ private struct TimelineSection: View {
         case .screenOff: .indigo
         case .app: .secondary
         }
+    }
+}
+
+/// Screen-on hours per day, scaled to the busiest day; click a bar to see that day.
+private struct ScreenTimeChart: View {
+    let timeline: Timeline
+    /// Oldest first.
+    let days: [Date]
+    @Binding var selected: Date
+
+    @Environment(\.locale) private var locale
+
+    var body: some View {
+        let hours = days.map { day in
+            let end = min(Date(), Calendar.current.date(byAdding: .day, value: 1, to: day) ?? Date())
+            return (day, timeline.screenOnTime(from: day, to: end) / 3600)
+        }
+        let top = max(1, hours.map(\.1).max() ?? 1)
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Screen on per day").font(.caption).foregroundStyle(.secondary)
+            HStack(alignment: .bottom, spacing: 8) {
+                ForEach(hours, id: \.0) { day, value in
+                    VStack(spacing: 3) {
+                        Text(verbatim: value >= 0.05 ? label(value) : "")
+                            .font(.caption2)
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                        RoundedRectangle(cornerRadius: 3)
+                            .fill(day == selected ? Color.accentColor : Color.accentColor.opacity(0.35))
+                            .frame(height: max(3, 64 * value / top))
+                        Text(verbatim: day.formatted(.dateTime.weekday(.abbreviated).locale(locale)))
+                            .font(.caption2)
+                            .foregroundStyle(day == selected ? .primary : .secondary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .contentShape(Rectangle())
+                    .onTapGesture { selected = day }
+                }
+            }
+            .frame(height: 100, alignment: .bottom)
+        }
+    }
+
+    /// "2.4 hr", "11 hr", in the window's language.
+    private func label(_ hours: Double) -> String {
+        Measurement(value: hours, unit: UnitDuration.hours)
+            .formatted(.measurement(width: .abbreviated, usage: .asProvided,
+                                    numberFormatStyle: .number.precision(.fractionLength(hours < 10 ? 1 : 0))).locale(locale))
     }
 }
 

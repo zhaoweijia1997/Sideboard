@@ -126,6 +126,13 @@ enum StatusReport {
                 """)
             }
 
+            if let info = await Companion.info(adb, device.serial) {
+                let labels = await Companion.labels(adb, device.serial)
+                let history = await Companion.events(adb, device.serial, since: Date().addingTimeInterval(-91 * 86_400))
+                Swift.print("  companion: version \(info.version), \(info.events) events since \(info.since.map { "\($0)" } ?? "?"), usage access \(info.usageAccess), \(labels.count) app names, \(history.count) events read")
+            } else {
+                Swift.print("  companion: not installed")
+            }
             if let output = await adb.shell(device.serial, AppList.command, timeout: 60) {
                 let result = AppList.parse(output, timeZone: status.timeZone ?? .current)
                 let apps = result.apps
@@ -147,11 +154,11 @@ enum StatusReport {
                 let today = Calendar.current.startOfDay(for: Date())
                 let formatter = DateFormatter()
                 formatter.dateFormat = "MM-dd HH:mm"
-                Swift.print("  timeline: \(timeline.events.count) events, screen on today \(Int(timeline.screenOnTime(since: today, screenIsOn: status.screen == .on)) / 60) min")
+                Swift.print("  timeline: \(timeline.events.count) events, screen on today \(Int(timeline.screenOnTime(from: today, to: Date(), screenIsOn: status.screen == .on)) / 60) min")
                 for event in timeline.events.suffix(12) {
                     Swift.print("    \(formatter.string(from: event.date)) \(event.kind)")
                 }
-                Swift.print("  app time today: \(timeline.appTime(since: today).map { "\($0.package) \(Int($0.time) / 60) min" }.joined(separator: ", "))")
+                Swift.print("  app time today: \(timeline.appTime(from: today, to: Date()).map { "\($0.package) \(Int($0.time) / 60) min" }.joined(separator: ", "))")
             }
         }
     }

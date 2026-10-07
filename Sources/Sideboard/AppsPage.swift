@@ -43,9 +43,9 @@ struct AppsPage: View {
             }
             .filter { app in
                 search.isEmpty || app.package.localizedCaseInsensitiveContains(search)
-                    || (AppNames.name(for: app.package)?.localizedCaseInsensitiveContains(search) ?? false)
+                    || (AppNames.name(for: app.package, labels: dashboard.labels)?.localizedCaseInsensitiveContains(search) ?? false)
             }
-            .map { Row(app: $0, sortName: (AppNames.name(for: $0.package) ?? $0.package).lowercased(), sortSize: $0.totalSize ?? 0) }
+            .map { Row(app: $0, sortName: (AppNames.name(for: $0.package, labels: dashboard.labels) ?? $0.package).lowercased(), sortSize: $0.totalSize ?? 0) }
             .sorted(using: sortOrder)
     }
 
@@ -67,7 +67,10 @@ struct AppsPage: View {
             }
             footer
         }
-        .task { if !model.loaded { await model.load(timeZone: timeZone) } }
+        .task {
+            if !model.loaded { await model.load(timeZone: timeZone) }
+            await dashboard.loadIcons()
+        }
         .alert(item: $confirming) { confirmation in
             switch confirmation.action {
             case .uninstall:
@@ -124,12 +127,16 @@ struct AppsPage: View {
         Table(rows, selection: $selection, sortOrder: $sortOrder) {
             TableColumn(Text("Name"), value: \.sortName) { row in
                 HStack(spacing: 8) {
-                    Image(systemName: row.app.isSystem ? "gearshape.fill" : "app.fill")
-                        .foregroundStyle(row.app.isSystem ? Color.secondary : Color.accentColor.opacity(0.75))
-                        .frame(width: 18)
+                    if let icon = dashboard.icons[row.app.package] {
+                        Image(nsImage: icon).resizable().frame(width: 22, height: 22)
+                    } else {
+                        Image(systemName: row.app.isSystem ? "gearshape.fill" : "app.fill")
+                            .foregroundStyle(row.app.isSystem ? Color.secondary : Color.accentColor.opacity(0.75))
+                            .frame(width: 22)
+                    }
                     VStack(alignment: .leading, spacing: 1) {
-                        AppNames.text(for: row.app.package, home: home).lineLimit(1)
-                        if AppNames.isNamed(row.app.package, home: home) {
+                        AppNames.text(for: row.app.package, home: home, labels: dashboard.labels).lineLimit(1)
+                        if AppNames.isNamed(row.app.package, home: home, labels: dashboard.labels) {
                             Text(verbatim: row.app.package).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                         }
                     }
@@ -227,7 +234,7 @@ struct AppsPage: View {
     }
 
     private func displayName(_ app: DeviceApp) -> String {
-        AppNames.name(for: app.package) ?? app.package
+        AppNames.name(for: app.package, labels: dashboard.labels) ?? app.package
     }
 
     /// The APK (or the folder of split APKs, for Play Store apps) into a folder the user picks.

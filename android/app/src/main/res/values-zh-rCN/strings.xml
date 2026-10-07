@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="keyboard_name">Sideboard 键盘（从 Mac 输入）</string>
+    <string name="main_body">Mac 上的 Sideboard 通过 adb 读取这台设备的亮屏、开关机和应用使用记录，也能往这台设备输入文字。这个 App 会把这些记录保存 90 天，不会发送到别的地方，也不会修改任何设置。</string>
+    <string name="status">从 %1$s 开始记录 · 已保存 %2$d 条</string>
+    <string name="access_allowed">使用情况访问权限：已允许</string>
+    <string name="access_missing">使用情况访问权限：未允许，所以不会记录新的内容。Mac 上的 Sideboard 安装这个 App 时会自动允许；你也可以在设置里打开。</string>
+    <string name="open_settings">打开设置</string>
+    <string name="test_field">可以在这里试试从 Sideboard 输入</string>
+</resources>

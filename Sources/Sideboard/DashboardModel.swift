@@ -53,6 +53,13 @@ final class DashboardModel {
     let apps: AppsModel
     let files: FilesModel
     let cleanup: CleanupModel
+    private(set) var companion: Companion.Info?
+    private(set) var companionChecked = false
+    private(set) var companionBusy = false
+    var companionFailure: String?
+    /// App names and icons from the companion app.
+    private(set) var labels: [String: String] = [:]
+    private(set) var icons: [String: NSImage] = [:]
 
     private let adb: Adb?
     private let live: Bool
@@ -61,6 +68,9 @@ final class DashboardModel {
     private var transferTask: Task<Void, Never>?
     private var refreshing = false
     private var lastTimeline = Date.distantPast
+    /// From Android's usage history (24 hours) and from the companion app (90 days).
+    private var recentEvents: [Timeline.Event] = []
+    private var history: [Timeline.Event] = []
 
     static let awakeInterval: Double = 5
     /// While the screen is off: just enough to notice it coming back on.
@@ -77,13 +87,15 @@ final class DashboardModel {
 
     /// Made-up readings for screenshots.
     init(sample status: DeviceStatus, cpuUsage: Double, timeline: Timeline, details: DeviceDetails, transfers: [Transfer] = [],
-         apps: AppsModel, files: FilesModel, cleanup: CleanupModel) {
+         apps: AppsModel, files: FilesModel, cleanup: CleanupModel, companion: Companion.Info? = nil) {
         serial = "sample"
         adb = nil
         live = false
         self.apps = apps
         self.files = files
         self.cleanup = cleanup
+        self.companion = companion
+        companionChecked = true
         self.status = status
         self.cpuUsage = cpuUsage
         self.timeline = timeline
@@ -155,14 +167,79 @@ final class DashboardModel {
             }
         }
 
-        let timelineInterval: Double = isAwake ? 120 : 600
+        // Asleep, little happens: every half hour is plenty, and it leaves the companion app alone.
+        let timelineInterval: Double = isAwake ? 120 : 1800
         if Date().timeIntervalSince(lastTimeline) > timelineInterval {
             lastTimeline = Date()
+            await refreshCompanion()
             if let output = await adb.shell(serial, Timeline.command, timeout: 30) {
-                timeline = Timeline.parse(output, timeZone: status?.timeZone ?? .current, bootDate: status?.bootDate)
+                recentEvents = Timeline.events(from: output, timeZone: status?.timeZone ?? .current)
             }
+            if companion != nil {
+                // The first time all 90 days, then only what's new (with an hour of overlap).
+                let since = history.last.map { $0.date.addingTimeInterval(-3600) } ?? Date().addingTimeInterval(-91 * 86_400)
+                let new = await Companion.events(adb, serial, since: since)
+                history = history.filter { $0.date < since } + new
+            }
+            timeline = Timeline.combine(history + recentEvents, bootDate: status?.bootDate)
         }
         return isAwake ? Self.awakeInterval : Self.asleepInterval
+    }
+
+    // MARK: Companion app
+
+    /// Whether the companion app is installed, and what it has recorded. Names are read once.
+    func refreshCompanion() async {
+        guard let adb else { return }
+        companion = await Companion.info(adb, serial)
+        companionChecked = true
+        if companion != nil, labels.isEmpty {
+            labels = await Companion.labels(adb, serial)
+        }
+    }
+
+    /// Icons for the Apps page, read once when it opens.
+    func loadIcons() async {
+        guard let adb, companion != nil, icons.isEmpty else { return }
+        icons = await Companion.icons(adb, serial)
+    }
+
+    func installCompanion() async {
+        guard let adb, !companionBusy else { return }
+        companionBusy = true
+        defer { companionBusy = false }
+        if let error = await Companion.install(adb, serial) {
+            companionFailure = error
+            return
+        }
+        await refreshCompanion()
+        lastTimeline = .distantPast
+        await refresh()
+    }
+
+    func allowCompanionUsageAccess() async {
+        guard let adb else { return }
+        await Companion.allowUsageAccess(adb, serial)
+        await refreshCompanion()
+    }
+
+    func uninstallCompanion() async {
+        guard let adb, !companionBusy else { return }
+        companionBusy = true
+        defer { companionBusy = false }
+        if let error = await Companion.uninstall(adb, serial) {
+            companionFailure = error
+        }
+        history = []
+        labels = [:]
+        icons = [:]
+        await refreshCompanion()
+        timeline = Timeline.combine(recentEvents, bootDate: status?.bootDate)
+    }
+
+    func typingSession() -> TypingSession? {
+        guard let adb, companion != nil else { return nil }
+        return TypingSession(adb: adb, serial: serial)
     }
 
     static let sleepCheck = "cat /proc/uptime; echo @@power; dumpsys power | grep -E 'mWakefulness='; true"

@@ -23,3 +23,6 @@ so corrections are especially appreciated.
 - Sideboard only reads from devices. Anything that changes a device (installing, sending,
   key presses) must happen only when the user asks, and must never change device settings.
 - Check layouts in every language with `Sideboard --snapshot <folder>`.
+- The companion app (`android/`) must stay light: no background service, no network use,
+  nothing readable except over adb (its provider and keyboard require the DUMP permission,
+  which only the adb shell holds). Rebuild it with `tools/build-companion.sh`.

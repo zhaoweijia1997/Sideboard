@@ -54,19 +54,20 @@ enum AppNames {
         "com.android.systemui": LocalizedStringKey("System"),
     ]
 
-    /// `home` is the device's current home screen app, which may be any launcher.
-    static func text(for package: String, home: String?) -> Text {
+    /// `home` is the device's current home screen app, which may be any launcher. `labels` are the
+    /// names the companion app read on the device, when it's installed.
+    static func text(for package: String, home: String?, labels: [String: String] = [:]) -> Text {
         if package == home || homeScreens.contains(package) { return Text("Home screen") }
-        if let name = known[package] { return Text(verbatim: name) }
         if let name = system[package] { return Text(name) }
+        if let name = known[package] ?? labels[package] { return Text(verbatim: name) }
         return Text(verbatim: package)
     }
 
-    /// A brand name for sorting and searching; nil when only the package name is known.
-    static func name(for package: String) -> String? { known[package] }
+    /// A name for sorting and searching; nil when only the package name is known.
+    static func name(for package: String, labels: [String: String] = [:]) -> String? { known[package] ?? labels[package] }
 
     /// True when `text(for:)` shows something friendlier than the package name.
-    static func isNamed(_ package: String, home: String?) -> Bool {
-        package == home || homeScreens.contains(package) || known[package] != nil || system[package] != nil
+    static func isNamed(_ package: String, home: String?, labels: [String: String] = [:]) -> Bool {
+        package == home || homeScreens.contains(package) || known[package] != nil || system[package] != nil || labels[package] != nil
     }
 }
