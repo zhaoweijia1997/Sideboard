@@ -9,9 +9,15 @@ enum RemoteKey: Int, CaseIterable {
     case mute = 164, sleep = 223, wake = 224
 }
 
-/// A file being sent or an app being installed.
+/// A file going to or coming from the device, or an app being installed.
 struct Transfer: Identifiable, Equatable {
-    enum Kind { case send, install }
+    enum Kind: Equatable {
+        case install
+        /// Into a folder on the device.
+        case send(folder: String)
+        /// To this full path on the Mac.
+        case receive(from: String, to: URL)
+    }
     enum State: Equatable {
         case waiting, running, done, failed(String)
 
@@ -41,7 +47,12 @@ final class DashboardModel {
     private(set) var readingDetails = false
     private(set) var unreachable = false
     var transfers: [Transfer] = []
+    /// Counts finished transfers, so the Files page can reload after an upload.
+    private(set) var finishedTransfers = 0
     var onStatus: ((DeviceStatus) -> Void)?
+    let apps: AppsModel
+    let files: FilesModel
+    let cleanup: CleanupModel
 
     private let adb: Adb?
     private let live: Bool
@@ -59,13 +70,20 @@ final class DashboardModel {
         self.serial = serial
         self.adb = adb
         live = true
+        apps = AppsModel(adb: adb, serial: serial)
+        files = FilesModel(adb: adb, serial: serial)
+        cleanup = CleanupModel(adb: adb, serial: serial)
     }
 
     /// Made-up readings for screenshots.
-    init(sample status: DeviceStatus, cpuUsage: Double, timeline: Timeline, details: DeviceDetails, transfers: [Transfer] = []) {
+    init(sample status: DeviceStatus, cpuUsage: Double, timeline: Timeline, details: DeviceDetails, transfers: [Transfer] = [],
+         apps: AppsModel, files: FilesModel, cleanup: CleanupModel) {
         serial = "sample"
         adb = nil
         live = false
+        self.apps = apps
+        self.files = files
+        self.cleanup = cleanup
         self.status = status
         self.cpuUsage = cpuUsage
         self.timeline = timeline
@@ -200,10 +218,40 @@ final class DashboardModel {
     /// APKs are installed; everything else goes into the device's Download folder.
     func send(_ urls: [URL]) {
         for url in urls {
-            let kind: Transfer.Kind = url.pathExtension.lowercased() == "apk" ? .install : .send
-            transfers.append(Transfer(name: url.lastPathComponent, kind: kind))
-            pending.append((transfers[transfers.count - 1].id, url))
+            enqueue(Transfer(name: url.lastPathComponent,
+                             kind: url.pathExtension.lowercased() == "apk" ? .install : .send(folder: Adb.downloadFolder)), url)
         }
+    }
+
+    /// Copies files from the Mac into a folder on the device (the Files page).
+    func upload(_ urls: [URL], to folder: String) {
+        for url in urls {
+            enqueue(Transfer(name: url.lastPathComponent, kind: .send(folder: folder.hasSuffix("/") ? folder : folder + "/")), url)
+        }
+    }
+
+    /// Copies files or folders from the device into a folder on the Mac, never replacing
+    /// anything there: "Name 2", "Name 3"… when the name is taken.
+    func download(_ paths: [(path: String, name: String)], to folder: URL) {
+        var taken = Set<String>()
+        for item in paths {
+            var target = folder.appending(path: item.name)
+            var number = 2
+            while FileManager.default.fileExists(atPath: target.path) || taken.contains(target.path) {
+                let base = (item.name as NSString).deletingPathExtension
+                let ext = (item.name as NSString).pathExtension
+                let suffix = ext.isEmpty ? "" : "." + ext
+                target = folder.appending(path: "\(base) \(number)\(suffix)")
+                number += 1
+            }
+            taken.insert(target.path)
+            enqueue(Transfer(name: target.lastPathComponent, kind: .receive(from: item.path, to: target)), nil)
+        }
+    }
+
+    private func enqueue(_ transfer: Transfer, _ url: URL?) {
+        transfers.append(transfer)
+        pending.append((transfer.id, url))
         processTransfers()
     }
 
@@ -211,7 +259,7 @@ final class DashboardModel {
         transfers.removeAll { $0.state.isFinished }
     }
 
-    private var pending: [(id: UUID, url: URL)] = []
+    private var pending: [(id: UUID, url: URL?)] = []
 
     /// One at a time, in the order they were dropped.
     private func processTransfers() {
@@ -221,12 +269,16 @@ final class DashboardModel {
                 let (id, url) = self.pending.removeFirst()
                 guard let index = self.transfers.firstIndex(where: { $0.id == id }) else { continue }
                 self.transfers[index].state = .running
-                let failure = self.transfers[index].kind == .install
-                    ? await adb.install(self.serial, apk: url)
-                    : await adb.push(self.serial, url)
+                let failure: String?
+                switch self.transfers[index].kind {
+                case .install: failure = await adb.install(self.serial, apk: url!)
+                case let .send(folder): failure = await adb.push(self.serial, url!, to: folder)
+                case let .receive(from, to): failure = await adb.pull(self.serial, from, to: to)
+                }
                 if let index = self.transfers.firstIndex(where: { $0.id == id }) {
                     self.transfers[index].state = failure.map { .failed($0) } ?? .done
                 }
+                self.finishedTransfers += 1
             }
             self?.transferTask = nil
         }

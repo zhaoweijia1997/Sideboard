@@ -17,6 +17,9 @@ enum Snapshots {
             let pages: [(String, DeviceStore, DashboardView.Page, CGFloat)] = [
                 ("overview", .sample, .overview, 1060),
                 ("details", .sample, .details, 1400),
+                ("apps", .sample, .apps, size.height),
+                ("files", .sample, .files, size.height),
+                ("cleanup", .sample, .cleanup, size.height),
                 ("welcome", .sampleEmpty, .overview, size.height),
                 ("waiting", .sampleWaiting, .overview, size.height),
                 ("noadb", .sampleNoAdb, .overview, size.height),
@@ -188,8 +191,74 @@ extension DashboardModel {
         ])
         return DashboardModel(sample: status, cpuUsage: 0.27, timeline: timeline, details: details,
                               transfers: [
-                                  Transfer(name: "Holiday Photos.zip", kind: .send, state: .done),
+                                  Transfer(name: "Holiday Photos.zip", kind: .send(folder: Adb.downloadFolder), state: .done),
                                   Transfer(name: "MediaPlayer-2.4.apk", kind: .install, state: .running),
-                              ])
+                              ],
+                              apps: .sample, files: .sample, cleanup: .sample)
+    }
+}
+
+extension AppsModel {
+    static var sample: AppsModel {
+        let mb: Int64 = 1_000_000
+        func app(_ package: String, system: Bool = false, off: Bool = false, launcher: Bool = true, version: String?, days: Double,
+                 size: Int64, data: Int64, cache: Int64) -> DeviceApp {
+            DeviceApp(package: package, isSystem: system, isDisabled: off, launcher: launcher ? "\(package)/.Main" : nil,
+                      versionCode: 1, versionName: version, updated: Date().addingTimeInterval(-days * 86_400),
+                      appSize: size * mb, dataSize: data * mb, cacheSize: cache * mb)
+        }
+        return AppsModel(sample: [
+            app("com.google.android.youtube.tv", version: "4.40.303", days: 3, size: 92, data: 147, cache: 48),
+            app("com.netflix.ninja", version: "11.2.0", days: 12, size: 64, data: 38, cache: 12),
+            app("org.videolan.vlc", version: "3.6.4", days: 40, size: 36, data: 2, cache: 1),
+            app("com.spotify.tv.android", version: "1.92.0", days: 8, size: 48, data: 21, cache: 9),
+            app("org.xbmc.kodi", version: "21.1", days: 90, size: 120, data: 310, cache: 4),
+            app("com.example.weather", version: "2.3", days: 200, size: 14, data: 3, cache: 1),
+            app("com.example.vendor.demo", system: true, off: true, version: nil, days: 500, size: 30, data: 0, cache: 0),
+            app("com.android.tv.settings", system: true, version: nil, days: 500, size: 12, data: 4, cache: 0),
+        ], protected: ["com.android.tv.settings"])
+    }
+}
+
+extension FilesModel {
+    static var sample: FilesModel {
+        func item(_ name: String, folder: Bool, size: Int64 = 4096, days: Double) -> DeviceFile {
+            DeviceFile(name: name, path: "/sdcard/\(name)", isFolder: folder, size: size,
+                       modified: Date().addingTimeInterval(-days * 86_400))
+        }
+        let files = [
+            item("Android", folder: true, days: 300), item("DCIM", folder: true, days: 2), item("Download", folder: true, days: 1),
+            item("Movies", folder: true, days: 14), item("Music", folder: true, days: 60), item("Pictures", folder: true, days: 5),
+            item("Holiday Photos.zip", folder: false, size: 182_000_000, days: 1),
+            item("MediaPlayer-2.4.apk", folder: false, size: 28_400_000, days: 1),
+            item("notes.txt", folder: false, size: 2_300, days: 30),
+        ]
+        let sizes: [String: Int64] = ["/sdcard/Android": 1_840_000_000, "/sdcard/DCIM": 92_000_000, "/sdcard/Download": 210_000_000,
+                                      "/sdcard/Movies": 4_200_000_000, "/sdcard/Music": 640_000_000, "/sdcard/Pictures": 38_000_000]
+        return FilesModel(sample: files, path: "/sdcard", sizes: sizes)
+    }
+}
+
+extension CleanupModel {
+    static var sample: CleanupModel {
+        let mb: Int64 = 1_000_000
+        return CleanupModel(sample: [
+            CleanupCategory(kind: .appCaches, items: [
+                CleanupItem(path: "com.google.android.youtube.tv", size: 48 * mb),
+                CleanupItem(path: "com.netflix.ninja", size: 12 * mb),
+                CleanupItem(path: "com.spotify.tv.android", size: 9 * mb),
+            ], total: 412 * mb, selected: true),
+            CleanupCategory(kind: .leftovers, items: [
+                CleanupItem(path: "/sdcard/Android/data/com.example.oldgame", size: 860 * mb),
+                CleanupItem(path: "/sdcard/Android/obb/com.example.oldgame", size: 1_240 * mb),
+            ], selected: true),
+            CleanupCategory(kind: .installers, items: [
+                CleanupItem(path: "/sdcard/Download/MediaPlayer-2.3.apk", size: 27 * mb, modified: Date().addingTimeInterval(-60 * 86_400)),
+            ], selected: true),
+            CleanupCategory(kind: .thumbnails, items: [CleanupItem(path: "/sdcard/Pictures/.thumbnails", size: 18 * mb)], selected: true),
+            CleanupCategory(kind: .largeFiles, items: [
+                CleanupItem(path: "/sdcard/Movies/Concert.mkv", size: 3_900 * mb, modified: Date().addingTimeInterval(-14 * 86_400), selected: false),
+            ], selected: false),
+        ])
     }
 }

@@ -151,6 +151,26 @@ struct Adb: Sendable {
 
     static let downloadFolder = "/sdcard/Download/"
 
+    /// Copies a file or folder from the device to `local` (the full destination path).
+    /// Returns nil on success, otherwise the reason.
+    func pull(_ serial: String, _ remote: String, to local: URL) async -> String? {
+        guard let output = await execute(["-s", serial, "pull", remote, local.path], timeout: 3600) else { return "adb didn't run" }
+        if output.succeeded { return nil }
+        return output.timedOut ? "timed out" : Self.lastLine(output.message)
+    }
+
+    /// Runs a shell command and returns its output whatever the exit status, for commands whose
+    /// messages matter ("Success", "Failure [...]"). Nil only if adb couldn't run or timed out.
+    func shellOutput(_ serial: String, _ command: String, timeout: TimeInterval = 30) async -> String? {
+        guard let output = await execute(["-s", serial, "shell", command], timeout: timeout), !output.timedOut else { return nil }
+        return output.message
+    }
+
+    /// Single-quotes a path or name for the device's shell.
+    static func quote(_ text: String) -> String {
+        "'" + text.replacingOccurrences(of: "'", with: "'\\''") + "'"
+    }
+
     private static func lastLine(_ text: String) -> String {
         text.split(separator: "\n").last.map { String($0).replacingOccurrences(of: "adb: error: ", with: "") } ?? text
     }

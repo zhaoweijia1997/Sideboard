@@ -8,7 +8,8 @@ See how your Android devices are doing, from your Mac. Sideboard connects to And
 boxes, phones and tablets over adb, by USB or over your home network, and shows everything
 it can read: whether the screen is on, what's showing, what's playing, how long it's been
 running, CPU, memory, storage, network, temperature, and the last 24 hours of screen and
-app use. It's also a remote, takes screenshots, sends files and installs apps.
+app use. It manages apps and files, cleans up junk, works as a remote, takes screenshots and
+installs apps.
 
 Nothing has to be installed on the device.
 
@@ -16,8 +17,8 @@ Nothing has to be installed on the device.
   <img src="docs/screenshots/overview-en-light.png" width="760" alt="Sideboard showing a TV's screen, app, playback, uptime, CPU, memory, storage, network, volume and its last 24 hours">
 </p>
 
-> **Status: early preview (0.1).** Watches your devices and does the basics. See the roadmap
-> for what's next.
+> **Status: early preview (0.2).** Watches your devices, manages apps and files, and cleans up.
+> See the roadmap for what's next.
 
 ## What it shows
 
@@ -45,6 +46,27 @@ Nothing has to be installed on the device.
 
 <p align="center">
   <img src="docs/screenshots/details-en-light.png" width="760" alt="The Details page">
+</p>
+
+## Apps, files and cleanup
+
+**Apps**: everything installed, with version, last update and size; filter by apps you
+added, preinstalled ones and ones that are turned off. Open, force stop, turn off (and back
+on), uninstall apps you added, and save any app's APK to your Mac. Apps the device needs to
+work (the home screen, the keyboard, core parts of Android) can't be turned off or removed
+from Sideboard.
+
+**Files**: browse internal storage and USB drives, see folder sizes, download files and
+folders to your Mac, upload (or drop files on the window), create folders, rename and
+delete. Deleting asks first: there's no Trash on the device.
+
+**Clean up**: scan for app caches (cleared by Android itself and rebuilt by the apps),
+leftover folders of apps that are gone, downloaded installers and thumbnail caches. Large
+files are listed for you to check but never selected for you. Nothing is removed until you
+choose what and confirm.
+
+<p align="center">
+  <img src="docs/screenshots/cleanup-en-light.png" width="760" alt="The Clean Up page">
 </p>
 
 ## What it does (only when you click)
@@ -129,8 +151,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 - [ ] Companion app on the device (optional): history longer than 24 hours, exact power-on
       and power-off times recorded even while the Mac is off, typing text in any language,
       a shared clipboard, app names instead of package names
-- [ ] Apps: list, uninstall, turn off preinstalled apps (reversibly)
-- [ ] Cleanup: app caches and large files
+- [x] Apps: list, uninstall, turn off preinstalled apps (reversibly) (0.2)
+- [x] Files and cleanup (0.2)
 - [ ] Menu bar mode and notifications (for example when a device has been on all night)
 
 ## Support Sideboard

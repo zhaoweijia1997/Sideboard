@@ -62,6 +62,9 @@ enum AppNames {
         return Text(verbatim: package)
     }
 
+    /// A brand name for sorting and searching; nil when only the package name is known.
+    static func name(for package: String) -> String? { known[package] }
+
     /// True when `text(for:)` shows something friendlier than the package name.
     static func isNamed(_ package: String, home: String?) -> Bool {
         package == home || homeScreens.contains(package) || known[package] != nil || system[package] != nil

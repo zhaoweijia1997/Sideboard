@@ -2,7 +2,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct DashboardView: View {
-    enum Page: Hashable { case overview, details }
+    enum Page: Hashable { case overview, details, apps, files, cleanup }
 
     let model: DashboardModel
     let entry: DeviceStore.Entry
@@ -24,6 +24,9 @@ struct DashboardView: View {
             Picker(selection: $page) {
                 Text("Overview").tag(Page.overview)
                 Text("Details").tag(Page.details)
+                Text("Apps").tag(Page.apps)
+                Text("Files").tag(Page.files)
+                Text("Clean Up").tag(Page.cleanup)
             } label: {
                 EmptyView()
             }
@@ -32,14 +35,24 @@ struct DashboardView: View {
             .fixedSize()
             .padding(.bottom, 10)
             Divider()
-            ScrollView {
-                Group {
-                    switch page {
-                    case .overview: OverviewPage(model: model)
-                    case .details: DetailsPage(model: model)
+            switch page {
+            case .overview, .details:
+                ScrollView {
+                    Group {
+                        if page == .overview {
+                            OverviewPage(model: model)
+                        } else {
+                            DetailsPage(model: model)
+                        }
                     }
+                    .padding(20)
                 }
-                .padding(20)
+            case .apps:
+                AppsPage(model: model.apps, dashboard: model)
+            case .files:
+                FilesPage(model: model.files, dashboard: model)
+            case .cleanup:
+                CleanupPage(model: model.cleanup, home: model.status?.home)
             }
             if !model.transfers.isEmpty {
                 Divider()
@@ -48,11 +61,16 @@ struct DashboardView: View {
         }
         .overlay {
             if dropTargeted {
-                DropOverlay(name: entry.name)
+                DropOverlay(folder: page == .files ? model.files.path : nil)
             }
         }
         .dropDestination(for: URL.self) { urls, _ in
-            model.send(urls.filter(\.isFileURL))
+            // On the Files page, files go into the folder shown; elsewhere APKs are installed.
+            if page == .files {
+                model.upload(urls.filter(\.isFileURL), to: model.files.path)
+            } else {
+                model.send(urls.filter(\.isFileURL))
+            }
             return true
         } isTargeted: { dropTargeted = $0 }
         .onAppear { model.start() }
@@ -496,7 +514,7 @@ private struct TimelineSection: View {
         case .shutdown: "power"
         case .screenOn: "sun.max.fill"
         case .screenOff: "moon.fill"
-        case .app: "app"
+        case .app: "arrow.up.forward.app"
         }
     }
 
@@ -515,6 +533,11 @@ private struct TimelineSection: View {
 
 private struct TransfersBar: View {
     let model: DashboardModel
+
+    /// "/sdcard/Download/" → "Download".
+    static func lastComponent(_ path: String) -> String {
+        String(path.split(separator: "/").last ?? "")
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -539,15 +562,26 @@ private struct TransfersBar: View {
                     Group {
                         switch (transfer.kind, transfer.state) {
                         case (.install, .done): Text("Installed")
-                        case (.send, .done): Text("Saved to Download")
+                        case let (.send(folder), .done): Text("Sent to \(Self.lastComponent(folder))")
+                        case (.receive, .done): Text("Saved on this Mac")
                         case (.install, .running): Text("Installing…")
                         case (.send, .running): Text("Sending…")
+                        case (.receive, .running): Text("Downloading…")
                         case (_, .waiting): Text("Waiting")
                         case let (_, .failed(reason)): Text("Failed: \(reason)")
                         }
                     }
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
+                    if case let .receive(_, url) = transfer.kind, transfer.state == .done {
+                        Button {
+                            NSWorkspace.shared.activateFileViewerSelecting([url])
+                        } label: {
+                            Image(systemName: "magnifyingglass")
+                        }
+                        .buttonStyle(.borderless)
+                        .help(Text("Show in Finder"))
+                    }
                 }
                 .font(.callout)
             }
@@ -558,7 +592,8 @@ private struct TransfersBar: View {
 }
 
 private struct DropOverlay: View {
-    let name: String?
+    /// The Files page's folder, where dropped files go; nil elsewhere.
+    let folder: String?
 
     var body: some View {
         RoundedRectangle(cornerRadius: 14)
@@ -568,12 +603,23 @@ private struct DropOverlay: View {
                 VStack(spacing: 8) {
                     Image(systemName: "square.and.arrow.down.on.square").font(.system(size: 40))
                     Text("Drop to send to the device").font(.title3.weight(.semibold))
-                    Text("Apps (.apk) are installed. Other files go into the Download folder.")
-                        .foregroundStyle(.secondary)
+                    if let folder {
+                        Text("Into \(Self.shown(folder))")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Text("Apps (.apk) are installed. Other files go into the Download folder.")
+                            .foregroundStyle(.secondary)
+                    }
                 }
                 .padding(20)
             }
             .padding(12)
             .allowsHitTesting(false)
+    }
+
+    /// "/sdcard/Movies" → "/Movies".
+    static func shown(_ folder: String) -> String {
+        let relative = folder.replacingOccurrences(of: "/sdcard", with: "")
+        return relative.isEmpty ? "/" : relative
     }
 }

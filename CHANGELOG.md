@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.2.0 — 2026-10-07
+
+- **Apps** page: every app with version, last update and size (from Android's storage
+  statistics); filter by added, preinstalled and turned off; search. Open, force stop,
+  turn off and back on, uninstall apps you added, save an app's APK (or its split APKs) to
+  the Mac. Apps the device needs (home screen, keyboard in use, core Android parts) are
+  locked.
+- **Files** page: browse internal storage and USB drives, folder sizes on request,
+  download to the Mac (never replacing anything there), upload or drop files into the
+  folder shown, new folder, rename, delete (asks first).
+- **Clean Up** page: app caches (cleared with Android's own `pm trim-caches`), leftover
+  folders of removed apps in Android/data, obb and media, downloaded installers,
+  thumbnail caches, and large files for review (not selected). Shows how much was freed.
+- Transfers now cover uploads into any folder and downloads to the Mac, with Show in
+  Finder.
+- `--status` also reports what the new pages read.
+
 ## 0.1.0 — 2026-10-07
 
 First preview.

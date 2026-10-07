@@ -126,6 +126,22 @@ enum StatusReport {
                 """)
             }
 
+            if let output = await adb.shell(device.serial, AppList.command, timeout: 60) {
+                let result = AppList.parse(output, timeZone: status.timeZone ?? .current)
+                let apps = result.apps
+                Swift.print("""
+                  apps: \(apps.count) (\(apps.filter { !$0.isSystem }.count) added, \(apps.filter(\.isDisabled).count) off, \
+                \(apps.filter { $0.launcher != nil }.count) with a launcher, \(apps.filter { $0.totalSize != nil }.count) with sizes, \
+                \(apps.filter { $0.versionName != nil }.count) with versions), protected \(result.protected.intersection(apps.map(\.package)).count)
+                """)
+            }
+            if let output = await adb.shell(device.serial, "stat -c '%F|%s|%Y|%n' -- /sdcard/* 2>/dev/null; true") {
+                Swift.print("  shared storage: \(output.split(separator: "\n").count) entries at the top")
+            }
+            if let output = await adb.shell(device.serial, CleanupScan.command, timeout: 300) {
+                let categories = CleanupScan.parse(output)
+                Swift.print("  cleanup: " + categories.map { "\($0.kind) \($0.items.count) items \($0.size / 1_000_000) MB" }.joined(separator: ", "))
+            }
             if let output = await adb.shell(device.serial, Timeline.command, timeout: 30) {
                 let timeline = Timeline.parse(output, timeZone: status.timeZone ?? .current, bootDate: status.bootDate)
                 let today = Calendar.current.startOfDay(for: Date())
