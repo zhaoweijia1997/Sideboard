@@ -40,7 +40,10 @@ enum Snapshots {
             }
             for dark in [false, true] {
                 let suffix = "\(language.rawValue)-\(dark ? "dark" : "light").png"
+                // SIDEBOARD_SAMPLE_VIDEO: a real video for the finished-recording window (made-up path otherwise).
+                let video = URL(fileURLWithPath: ProcessInfo.processInfo.environment["SIDEBOARD_SAMPLE_VIDEO"] ?? "/tmp/Sideboard sample.mp4")
                 let sheets: [(String, AnyView)] = [
+                    ("recording", AnyView(RecordingView(url: video) {})),
                     ("settings", AnyView(SettingsView())),
                     ("menubar", AnyView(MenuBarPanel(store: .sample, monitor: .sample))),
                     ("add", AnyView(AddDeviceView(store: .sample))),

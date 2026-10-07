@@ -10,6 +10,9 @@ let package = Package(
         .executableTarget(
             name: "Sideboard", path: "Sources/Sideboard",
             // `/…/` regex literals, used to read adb output.
-            swiftSettings: [.enableUpcomingFeature("BareSlashRegexLiterals")]),
+            swiftSettings: [.enableUpcomingFeature("BareSlashRegexLiterals")],
+            // SwiftUI's VideoPlayer finds AVKit's player view by name at run time; SwiftPM doesn't
+            // link AVKit on its own, and without it the recording preview crashes.
+            linkerSettings: [.linkedFramework("AVKit")]),
     ]
 )
