@@ -87,6 +87,13 @@ final class DeviceStore {
 
     var selectedEntry: Entry? { entries.first { $0.id == selection } }
 
+    /// False for the made-up stores of screenshots.
+    var isLive: Bool { live }
+    var adbHandle: Adb? { adb }
+
+    /// The device's page model if it was opened, without creating one.
+    func existingDashboard(_ serial: String) -> DashboardModel? { dashboards[serial] }
+
     func dashboard(for serial: String) -> DashboardModel {
         if let model = dashboards[serial] { return model }
         let model = DashboardModel(serial: serial, adb: adb)

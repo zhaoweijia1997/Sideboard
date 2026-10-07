@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.4.0 — 2026-10-07
+
+- **Menu bar and notifications** (Settings): keep running with a menu bar icon after the window
+  closes, open at login, and get notified when a device is still on late at night, on for many
+  hours in a row, almost out of storage, running hot, low on battery, getting apps installed or
+  removed, or no longer answering. The panel shows every device at a glance. Devices are checked
+  every 5 minutes while their screen is on and every 30 while it's off; a device whose page is
+  open isn't checked twice.
+- **History on the Mac**: every reading adds to a per-device history in
+  ~/Library/Application Support/Sideboard (file names are a hash of the serial number), so the
+  history grows past 24 hours without the companion app. Delete it from Settings.
+- **Screen time** for a week or a month, with total and daily average, and a heatmap of when the
+  screen is on (last four weeks).
+- **Health** page: data usage per app (24 hours, 7 days, 30 days, added up on the device),
+  crashes and freezes, alarms that woke the device, background jobs, apps allowed to skip
+  battery saving. Read when opened, never polled.
+- **Open links on the device**: Send → Open a Link on the Device, drop a link on the window, or
+  Services → Open on Android Device from any app.
+- **Live typing** in the Type Text window: letters go to the device as you type (after an input
+  method finishes composing), with Return, Delete and the arrow keys.
+- `--check` runs the monitor once and prints the notifications it would send.
+
 ## 0.3.0 — 2026-10-07
 
 - **Companion app** (optional, `android/`, about 120 KB), installed from the Overview page.

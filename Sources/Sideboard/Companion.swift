@@ -123,6 +123,34 @@ final class TypingSession {
         self.serial = serial
     }
 
+    /// Live typing: each keystroke is queued and sent in order.
+    enum Action { case type(String), key(String), press(RemoteKey) }
+    var onResult: ((Result<Void, Failure>) -> Void)?
+    private var queue: [Action] = []
+    private var running = false
+
+    func enqueue(_ action: Action) {
+        queue.append(action)
+        guard !running else { return }
+        running = true
+        Task {
+            while !queue.isEmpty {
+                let action = queue.removeFirst()
+                let result: Result<Void, Failure>
+                switch action {
+                case let .type(text): result = await type(text)
+                case let .key(name): result = await key(name)
+                case let .press(key):
+                    // Arrow keys move around the device's screen; no text field needed.
+                    await adb.press(serial, key: key.rawValue)
+                    result = .success(())
+                }
+                onResult?(result)
+            }
+            running = false
+        }
+    }
+
     func begin() async {
         let current = (await adb.shell(serial, "settings get secure default_input_method") ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         previous = current.isEmpty || current == "null" || current == Companion.keyboard ? previous : current

@@ -18,8 +18,9 @@ history, app names and icons, and typing in any language.
   <img src="docs/screenshots/overview-en-light.png" width="760" alt="Sideboard showing a TV's screen, app, playback, uptime, CPU, memory, storage, network, volume and its last 24 hours">
 </p>
 
-> **Status: early preview (0.3).** Watches your devices, manages apps and files, cleans up, and
-> with the optional companion app keeps 90 days of history and types in any language.
+> **Status: early preview (0.4).** Watches your devices from the menu bar with notifications,
+> keeps their history on your Mac, gives them a health checkup, manages apps and files, cleans
+> up, and types in any language with the optional companion app.
 
 ## What it shows
 
@@ -47,6 +48,43 @@ history, app names and icons, and typing in any language.
 
 <p align="center">
   <img src="docs/screenshots/details-en-light.png" width="760" alt="The Details page">
+</p>
+
+## In the menu bar, with notifications
+
+Turn on **Run in the background with a menu bar icon** (Settings) and closing the window keeps
+Sideboard watching: the menu bar panel shows every device at a glance, and you get a
+notification when a device is
+
+- still on late at night (from an hour you pick),
+- on for many hours in a row (off by default),
+- almost out of storage, running hot or low on battery,
+- getting apps installed or removed,
+- no longer answering while its screen was on (off by default).
+
+It looks in every 5 minutes while a screen is on and every 30 while it's off, and does nothing
+that keeps the devices awake. **Open at login** starts it quietly in the menu bar.
+
+## History on your Mac
+
+Every reading adds to a history Sideboard keeps on your Mac (one small file per device, in
+~/Library/Application Support/Sideboard, never uploaded; delete it from Settings). So the
+history grows well past Android's 24 hours, even without the companion app, as long as
+Sideboard looks in once a day. The Overview shows screen time per day for a week or a month,
+with the total and the daily average, and once there are four weeks, when the screen tends to
+be on, by weekday and hour.
+
+## Health checkup
+
+The **Health** page reads what the device has been doing:
+
+- **Data usage** per app over 24 hours, 7 days or 30 days (Android's own counters).
+- **Crashes and freezes**: how many in the last week and month, which apps, the latest ones.
+- **What wakes the device** and which apps run **background jobs**, plus the apps allowed to
+  skip battery saving.
+
+<p align="center">
+  <img src="docs/screenshots/health-en-light.png" width="760" alt="The Health page">
 </p>
 
 ## Apps, files and cleanup
@@ -103,6 +141,10 @@ its history.
 - **Send files**: drop files on the window (or use Send) and they go into the device's
   Download folder.
 - **Install apps**: drop an `.apk` and it's installed or updated.
+- **Open links**: drop a link from Safari on the window, use Send → Open a Link on the
+  Device, or select a link in any app and choose Services → **Open on Android Device**.
+- **Live typing** (with the companion app): every letter you type goes straight to the
+  device, in any language, with Return, Delete and the arrow keys.
 
 ## Light on your devices
 
@@ -160,6 +202,8 @@ python3 tools/check_localizations.py   # checks every translation
 For bug reports, `Sideboard.app/Contents/MacOS/Sideboard --status` prints what Sideboard
 reads from each connected device, without serial numbers, addresses or network names.
 `--watch` runs the device list and dashboards for 20 seconds and prints what they saw.
+`--check` runs the background monitor once with every notification on and prints what it would
+send.
 `--snapshot <folder>` renders the window in every language, light and dark, with made-up
 devices.
 
@@ -180,7 +224,9 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
       clipboard, app names and icons (0.3)
 - [x] Apps: list, uninstall, turn off preinstalled apps (reversibly) (0.2)
 - [x] Files and cleanup (0.2)
-- [ ] Menu bar mode and notifications (for example when a device has been on all night)
+- [x] Menu bar mode and notifications, history on the Mac, health checkup (0.4)
+- [ ] Live screen view and screen recording
+- [ ] Update reminders for open-source apps; export an app list to set up a new device
 
 ## Support Sideboard
 

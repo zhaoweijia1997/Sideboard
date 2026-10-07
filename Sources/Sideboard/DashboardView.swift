@@ -2,7 +2,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct DashboardView: View {
-    enum Page: Hashable { case overview, details, apps, files, cleanup }
+    enum Page: Hashable { case overview, details, health, apps, files, cleanup }
 
     let model: DashboardModel
     let entry: DeviceStore.Entry
@@ -13,6 +13,8 @@ struct DashboardView: View {
     @State private var screenshot: ScreenshotState?
     @State private var dropTargeted = false
     @State private var typing: TypingHandle?
+    @State private var openingLink = false
+    @State private var linkFailure: String?
 
     private struct TypingHandle: Identifiable {
         let id = UUID()
@@ -30,6 +32,7 @@ struct DashboardView: View {
             Picker(selection: $page) {
                 Text("Overview").tag(Page.overview)
                 Text("Details").tag(Page.details)
+                Text("Health").tag(Page.health)
                 Text("Apps").tag(Page.apps)
                 Text("Files").tag(Page.files)
                 Text("Clean Up").tag(Page.cleanup)
@@ -53,6 +56,8 @@ struct DashboardView: View {
                     }
                     .padding(20)
                 }
+            case .health:
+                HealthPage(model: model.health, dashboard: model)
             case .apps:
                 AppsPage(model: model.apps, dashboard: model)
             case .files:
@@ -71,11 +76,18 @@ struct DashboardView: View {
             }
         }
         .dropDestination(for: URL.self) { urls, _ in
-            // On the Files page, files go into the folder shown; elsewhere APKs are installed.
-            if page == .files {
-                model.upload(urls.filter(\.isFileURL), to: model.files.path)
-            } else {
-                model.send(urls.filter(\.isFileURL))
+            // A web link opens on the device. Files: on the Files page into the folder shown;
+            // elsewhere APKs are installed and the rest goes into Download.
+            if let link = urls.first(where: { !$0.isFileURL }) {
+                Task { linkFailure = await model.openLink(link.absoluteString) }
+            }
+            let files = urls.filter(\.isFileURL)
+            if !files.isEmpty {
+                if page == .files {
+                    model.upload(files, to: model.files.path)
+                } else {
+                    model.send(files)
+                }
             }
             return true
         } isTargeted: { dropTargeted = $0 }
@@ -89,6 +101,14 @@ struct DashboardView: View {
         }
         .sheet(item: $typing) { handle in
             TypingView(session: handle.session)
+        }
+        .sheet(isPresented: $openingLink) {
+            OpenLinkView(model: model)
+        }
+        .alert(Text("Couldn't open the link"), isPresented: Binding(get: { linkFailure != nil }, set: { if !$0 { linkFailure = nil } })) {
+            Button("OK") { linkFailure = nil }
+        } message: {
+            Text(verbatim: linkFailure ?? "")
         }
     }
 
@@ -161,6 +181,8 @@ struct DashboardView: View {
             Menu {
                 Button("Send Files…") { chooseFiles(apps: false) }
                 Button("Install App…") { chooseFiles(apps: true) }
+                Divider()
+                Button("Open a Link on the Device…") { openingLink = true }
             } label: {
                 Label("Send", systemImage: "square.and.arrow.up")
             }
@@ -422,6 +444,7 @@ private struct TimelineSection: View {
     @Environment(\.locale) private var locale
     @State private var day = Calendar.current.startOfDay(for: Date())
     @State private var showingAll = false
+    @State private var span = 7
     private let shortList = 25
 
     private var formats: Formats { Formats(locale: locale) }
@@ -432,7 +455,12 @@ private struct TimelineSection: View {
             if let timeline = model.timeline {
                 let days = availableDays(timeline)
                 if days.count > 2 {
-                    ScreenTimeChart(timeline: timeline, days: Array(days.prefix(7)).reversed(), selected: $day)
+                    ScreenTimeChart(timeline: timeline, days: calendarDays(span), selected: $day, span: $span,
+                                    screenIsOn: model.status?.screen == .on)
+                        .padding(.bottom, 6)
+                }
+                if let oldest = timeline.events.first?.date, Date().timeIntervalSince(oldest) >= 7 * 86_400 {
+                    OnHoursHeatmap(timeline: timeline)
                         .padding(.bottom, 6)
                 }
                 dayHeader(timeline, days: days)
@@ -449,9 +477,9 @@ private struct TimelineSection: View {
                 }
                 Group {
                     if model.companion != nil {
-                        Text("From the companion app on the device, which keeps 90 days.")
+                        Text("From the companion app on the device, which keeps 90 days, and from the history Sideboard keeps on this Mac.")
                     } else {
-                        Text("From the device's own usage history, so it includes times when Sideboard wasn't open. Install the companion app to keep more than a day.")
+                        Text("From the device's own usage history (24 hours), which Sideboard keeps adding to on this Mac. The companion app records even while Sideboard isn't running.")
                     }
                 }
                 .font(.caption)
@@ -465,6 +493,12 @@ private struct TimelineSection: View {
             }
         }
         .onChange(of: day) { showingAll = false }
+    }
+
+    /// The last `count` days, oldest first, ending today.
+    private func calendarDays(_ count: Int) -> [Date] {
+        let today = Calendar.current.startOfDay(for: Date())
+        return (0..<count).reversed().compactMap { Calendar.current.date(byAdding: .day, value: -$0, to: today) }
     }
 
     /// Today first, then every earlier day with events.
@@ -579,46 +613,81 @@ private struct TimelineSection: View {
     }
 }
 
-/// Screen-on hours per day, scaled to the busiest day; click a bar to see that day.
+/// Screen-on hours per day for the last week or month, scaled to the busiest day; click a bar to
+/// see that day.
 private struct ScreenTimeChart: View {
     let timeline: Timeline
     /// Oldest first.
     let days: [Date]
     @Binding var selected: Date
+    @Binding var span: Int
+    var screenIsOn: Bool?
 
     @Environment(\.locale) private var locale
+    private var formats: Formats { Formats(locale: locale) }
 
     var body: some View {
         let hours = days.map { day in
             let end = min(Date(), Calendar.current.date(byAdding: .day, value: 1, to: day) ?? Date())
-            return (day, timeline.screenOnTime(from: day, to: end) / 3600)
+            return (day, timeline.screenOnTime(from: day, to: end, screenIsOn: screenIsOn) / 3600)
         }
         let top = max(1, hours.map(\.1).max() ?? 1)
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Screen on per day").font(.caption).foregroundStyle(.secondary)
-            HStack(alignment: .bottom, spacing: 8) {
-                ForEach(hours, id: \.0) { day, value in
+        let total = hours.map(\.1).reduce(0, +) * 3600
+        let average = formats.duration(total / Double(max(1, hours.count)))
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 10) {
+                Text("Screen on per day").font(.caption).foregroundStyle(.secondary)
+                Picker(selection: $span) {
+                    Text("Week").tag(7)
+                    Text("Month").tag(30)
+                } label: {
+                    EmptyView()
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .fixedSize()
+                .controlSize(.small)
+                Spacer()
+                Text("Total \(formats.duration(total)) · \(average) a day")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+            HStack(alignment: .bottom, spacing: span > 7 ? 3 : 8) {
+                ForEach(Array(hours.enumerated()), id: \.element.0) { index, item in
+                    let (day, value) = item
                     VStack(spacing: 3) {
-                        Text(verbatim: value >= 0.05 ? label(value) : "")
-                            .font(.caption2)
-                            .monospacedDigit()
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.7)
-                        RoundedRectangle(cornerRadius: 3)
+                        if span <= 7 {
+                            Text(verbatim: value >= 0.05 ? label(value) : "")
+                                .font(.caption2)
+                                .monospacedDigit()
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.7)
+                        }
+                        RoundedRectangle(cornerRadius: span > 7 ? 2 : 3)
                             .fill(day == selected ? Color.accentColor : Color.accentColor.opacity(0.35))
                             .frame(height: max(3, 64 * value / top))
-                        Text(verbatim: day.formatted(.dateTime.weekday(.abbreviated).locale(locale)))
+                        Text(verbatim: dayLabel(day, index: index, count: hours.count))
                             .font(.caption2)
                             .foregroundStyle(day == selected ? .primary : .secondary)
+                            .lineLimit(1)
+                            .fixedSize()
                     }
                     .frame(maxWidth: .infinity)
                     .contentShape(Rectangle())
                     .onTapGesture { selected = day }
+                    .help(Text(verbatim: "\(day.formatted(.dateTime.month().day().locale(locale)))  \(label(value))"))
                 }
             }
             .frame(height: 100, alignment: .bottom)
         }
+    }
+
+    /// Weekdays for a week; for a month, the day of the month every five days.
+    private func dayLabel(_ day: Date, index: Int, count: Int) -> String {
+        if span <= 7 { return day.formatted(.dateTime.weekday(.abbreviated).locale(locale)) }
+        return (count - 1 - index) % 5 == 0 ? day.formatted(.dateTime.day().locale(locale)) : ""
     }
 
     /// "2.4 hr", "11 hr", in the window's language.
@@ -626,6 +695,54 @@ private struct ScreenTimeChart: View {
         Measurement(value: hours, unit: UnitDuration.hours)
             .formatted(.measurement(width: .abbreviated, usage: .asProvided,
                                     numberFormatStyle: .number.precision(.fractionLength(hours < 10 ? 1 : 0))).locale(locale))
+    }
+}
+
+/// When the screen tends to be on: the last four weeks by weekday and hour.
+private struct OnHoursHeatmap: View {
+    let timeline: Timeline
+
+    @Environment(\.locale) private var locale
+
+    var body: some View {
+        let end = Date()
+        let start = Calendar.current.startOfDay(for: end.addingTimeInterval(-27 * 86_400))
+        let share = timeline.onShareByHour(from: start, to: end)
+        // Monday first, as most of the world counts the week.
+        let weekdays = [2, 3, 4, 5, 6, 7, 1]
+        VStack(alignment: .leading, spacing: 4) {
+            Text("When the screen is on (last 4 weeks)").font(.caption).foregroundStyle(.secondary)
+            Grid(horizontalSpacing: 2, verticalSpacing: 2) {
+                ForEach(weekdays, id: \.self) { weekday in
+                    GridRow {
+                        Text(verbatim: weekdayName(weekday))
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .frame(width: 34, alignment: .leading)
+                        ForEach(0..<24, id: \.self) { hour in
+                            RoundedRectangle(cornerRadius: 2)
+                                .fill(Color.accentColor.opacity(0.08 + 0.92 * share[weekday][hour]))
+                                .frame(height: 12)
+                        }
+                    }
+                }
+                GridRow {
+                    Text(verbatim: "")
+                    ForEach(0..<24, id: \.self) { hour in
+                        Text(verbatim: hour % 6 == 0 ? String(hour) : "")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .fixedSize()
+                    }
+                }
+            }
+        }
+    }
+
+    private func weekdayName(_ weekday: Int) -> String {
+        var calendar = Calendar.current
+        calendar.locale = locale
+        return calendar.shortWeekdaySymbols[weekday - 1]
     }
 }
 
@@ -707,7 +824,7 @@ private struct DropOverlay: View {
                         Text("Into \(Self.shown(folder))")
                             .foregroundStyle(.secondary)
                     } else {
-                        Text("Apps (.apk) are installed. Other files go into the Download folder.")
+                        Text("Apps (.apk) are installed. Other files go into the Download folder. Links open on the device.")
                             .foregroundStyle(.secondary)
                     }
                 }

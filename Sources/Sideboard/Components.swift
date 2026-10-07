@@ -80,13 +80,15 @@ struct Card<Content: View>: View {
 /// A thin bar for a fraction (memory, storage).
 struct UsageBar: View {
     let fraction: Double
+    /// Turns orange above 90%, for things filling up (memory, storage); off for rankings.
+    var warns = true
 
     var body: some View {
         GeometryReader { geometry in
             ZStack(alignment: .leading) {
                 Capsule().fill(Color.primary.opacity(0.08))
                 Capsule()
-                    .fill(fraction > 0.9 ? Color.orange : Color.accentColor)
+                    .fill(warns && fraction > 0.9 ? Color.orange : Color.accentColor)
                     .frame(width: max(4, geometry.size.width * min(1, max(0, fraction))))
             }
         }

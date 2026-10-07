@@ -98,9 +98,9 @@ struct Timeline: Equatable, Sendable {
         return result
     }
 
-    /// How long the screen was on between `start` and `end`. Before the first screen event,
-    /// the screen was in the opposite state of that event.
-    func screenOnTime(from start: Date, to end: Date, screenIsOn: Bool? = nil) -> TimeInterval {
+    /// The stretches of time the screen was on between `start` and `end`. Before the first screen
+    /// event, the screen was in the opposite state of that event.
+    func onIntervals(from start: Date, to end: Date, screenIsOn: Bool? = nil) -> [(start: Date, end: Date)] {
         let screenEvents = events.filter { [.screenOn, .screenOff, .startup, .shutdown].contains($0.kind) }
         var on: Bool
         if let first = screenEvents.first {
@@ -108,12 +108,12 @@ struct Timeline: Equatable, Sendable {
         } else {
             on = screenIsOn ?? false
         }
-        var total: TimeInterval = 0
+        var result: [(start: Date, end: Date)] = []
         var mark = start
         for event in screenEvents {
             if event.date >= end { break }
             if event.date > start {
-                if on { total += event.date.timeIntervalSince(max(mark, start)) }
+                if on, event.date > max(mark, start) { result.append((max(mark, start), event.date)) }
                 mark = event.date
             }
             switch event.kind {
@@ -124,8 +124,38 @@ struct Timeline: Equatable, Sendable {
             case .app: break
             }
         }
-        if on, end > max(mark, start) { total += end.timeIntervalSince(max(mark, start)) }
-        return total
+        if on, end > max(mark, start) { result.append((max(mark, start), end)) }
+        return result
+    }
+
+    /// How long the screen was on between `start` and `end`.
+    func screenOnTime(from start: Date, to end: Date, screenIsOn: Bool? = nil) -> TimeInterval {
+        onIntervals(from: start, to: end, screenIsOn: screenIsOn).map { $0.end.timeIntervalSince($0.start) }.reduce(0, +)
+    }
+
+    /// The share of each hour the screen was on, by weekday (Calendar weekday 1…7) and hour (0…23),
+    /// averaged over the days between `start` and `end`.
+    func onShareByHour(from start: Date, to end: Date) -> [[Double]] {
+        let calendar = Calendar.current
+        var seconds = Array(repeating: Array(repeating: 0.0, count: 24), count: 8)
+        var dayCount = Array(repeating: 0.0, count: 8)
+        var day = calendar.startOfDay(for: start)
+        while day < end {
+            dayCount[calendar.component(.weekday, from: day)] += 1
+            day = calendar.date(byAdding: .day, value: 1, to: day) ?? end
+        }
+        for interval in onIntervals(from: start, to: end) {
+            var cursor = interval.start
+            while cursor < interval.end {
+                let hourStart = calendar.dateInterval(of: .hour, for: cursor)?.start ?? cursor
+                let hourEnd = min(interval.end, hourStart.addingTimeInterval(3600))
+                seconds[calendar.component(.weekday, from: cursor)][calendar.component(.hour, from: cursor)] += hourEnd.timeIntervalSince(cursor)
+                cursor = hourEnd
+            }
+        }
+        return (0..<8).map { weekday in
+            seconds[weekday].map { dayCount[weekday] > 0 ? min(1, $0 / (3600 * dayCount[weekday])) : 0 }
+        }
     }
 
     /// Time in front per app between `start` and `end`, while the screen was on, longest first.

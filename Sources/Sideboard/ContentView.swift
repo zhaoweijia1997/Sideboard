@@ -19,7 +19,6 @@ struct ContentView: View {
         }
         .sheet(isPresented: $showingAbout) { AboutView() }
         .sheet(isPresented: $showingAdd) { AddDeviceView(store: store) }
-        .onAppear { store.start() }
     }
 
     // MARK: Sidebar

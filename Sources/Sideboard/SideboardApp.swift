@@ -1,24 +1,45 @@
 import AppKit
 import SwiftUI
+import UserNotifications
 
 @main
 struct SideboardApp: App {
     @NSApplicationDelegateAdaptor private var appDelegate: AppDelegate
     @AppStorage(AppLanguage.storageKey) private var language: AppLanguage = .system
-    @State private var store = DeviceStore()
+    @AppStorage(AppSettings.backgroundModeKey) private var backgroundMode = false
+    private let models = AppModels.shared
+    /// Runs for reports and screenshots mustn't put an icon in the menu bar.
+    private let commandLineRun = ["--status", "--watch", "--check", "--snapshot"].contains { CommandLine.arguments.contains($0) }
 
     var body: some Scene {
         Window("Sideboard", id: "main") {
-            ContentView(store: store)
+            ContentView(store: models.store)
                 .environment(\.locale, language.locale)
-                .frame(minWidth: 860, minHeight: 600)
+                .frame(minWidth: 900, minHeight: 600)
+                .onAppear { DockIcon.windowOpened() }
+                .onDisappear { DockIcon.windowClosed() }
         }
-        .defaultSize(width: 1000, height: 760)
+        .defaultSize(width: 1040, height: 780)
+
+        Settings {
+            SettingsView()
+                .environment(\.locale, language.locale)
+        }
+
+        // Only while "Run in the background with a menu bar icon" is on.
+        MenuBarExtra(isInserted: commandLineRun ? .constant(false) : $backgroundMode) {
+            MenuBarPanel(store: models.store, monitor: models.monitor)
+                .environment(\.locale, language.locale)
+        } label: {
+            Image(nsImage: MenuBarIcon.image)
+        }
+        .menuBarExtraStyle(.window)
     }
 }
 
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
+        AppSettings.register()
         // Sideboard.app/Contents/MacOS/Sideboard --status: what Sideboard reads from each connected
         // device, as text, for bug reports. Shows no serial numbers, addresses or names of networks.
         if CommandLine.arguments.contains("--status") {
@@ -39,21 +60,139 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             return
         }
+        // Sideboard.app/Contents/MacOS/Sideboard --check: one round of the background monitor with every
+        // notification switched on, printing what it would send instead of sending it.
+        if CommandLine.arguments.contains("--check") {
+            Task { @MainActor in
+                await StatusReport.check()
+                exit(0)
+            }
+            return
+        }
         // Sideboard.app/Contents/MacOS/Sideboard --snapshot <folder>
         if let flag = CommandLine.arguments.firstIndex(of: "--snapshot") {
             let folder = CommandLine.arguments.dropFirst(flag + 1).first ?? "."
             MainActor.assumeIsolated { Snapshots.render(to: URL(fileURLWithPath: folder)) }
             exit(0)
         }
-        // Behave like a normal windowed app when started with `swift run`, too.
-        NSApp.setActivationPolicy(.regular)
-        NSApp.activate(ignoringOtherApps: true)
+
+        if Monitor.canNotify { UNUserNotificationCenter.current().delegate = self }
+        // "Open on Android Device" in the Services menu of other apps.
+        NSApp.servicesProvider = self
+        NSUpdateDynamicServices()
+        MainActor.assumeIsolated {
+            AppModels.shared.store.start()
+            AppModels.shared.monitor.start()
+        }
+        if AppSettings.backgroundMode {
+            Task { _ = await Monitor.requestPermission() }
+        }
+        if LoginItem.launchedAtLogin && AppSettings.backgroundMode {
+            // Opened at login: stay quietly in the menu bar.
+            DispatchQueue.main.async {
+                NSApp.windows.filter(\.canBecomeMain).forEach { $0.close() }
+                NSApp.setActivationPolicy(.accessory)
+            }
+        } else {
+            // Behave like a normal windowed app when started with `swift run`, too.
+            NSApp.setActivationPolicy(.regular)
+            NSApp.activate(ignoringOtherApps: true)
+        }
     }
 
-    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+    /// In background mode, closing the window keeps Sideboard in the menu bar.
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        !AppSettings.backgroundMode
+    }
+
+    /// Opening Sideboard again (Dock, Finder) while it runs in the background shows the window.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool { true }
+
+    // MARK: Services menu
+
+    /// Services → "Open on Android Device": opens the selected link on the device chosen in the
+    /// window, or on the only one connected.
+    @objc func openOnDevice(_ pasteboard: NSPasteboard, userData: String?, error: AutoreleasingUnsafeMutablePointer<NSString>) {
+        guard let link = (pasteboard.string(forType: .URL) ?? pasteboard.string(forType: .string))?
+            .trimmingCharacters(in: .whitespacesAndNewlines), !link.isEmpty else { return }
+        Task { @MainActor in
+            let store = AppModels.shared.store
+            // When the service started Sideboard, give adb a moment to find the devices.
+            for _ in 0..<12 where !store.connected.contains(where: { $0.state == .online }) {
+                try? await Task.sleep(for: .milliseconds(500))
+            }
+            let online = store.connected.filter { $0.state == .online }
+            guard let device = online.first(where: { $0.serial == store.selection }) ?? online.first else {
+                Monitor.post(title: "Sideboard", body: String(localized: "No device is connected, so the link wasn't opened."))
+                return
+            }
+            if let failure = await store.dashboard(for: device.serial).openLink(link) {
+                Monitor.post(title: device.model ?? "Sideboard", body: failure)
+            }
+        }
+    }
+
+    // MARK: Notifications
+
+    /// Shown even while Sideboard is in front.
+    func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async
+        -> UNNotificationPresentationOptions {
+        [.banner, .sound]
+    }
+
+    /// Clicking one opens the window on that device.
+    func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
+        let serial = response.notification.request.content.userInfo["serial"] as? String
+        await MainActor.run {
+            if let serial { AppModels.shared.store.selection = serial }
+            AppDelegate.showWindow()
+        }
+    }
+
+    /// Reopens the window even when it was closed (in background mode).
+    @MainActor
+    static func showWindow() {
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate(ignoringOtherApps: true)
+        if !NSApp.windows.contains(where: { $0.isVisible && $0.canBecomeMain }) {
+            NSWorkspace.shared.open(Bundle.main.bundleURL)
+        }
+    }
 }
 
 enum StatusReport {
+    /// One monitor round with all notifications on (only for this run), printing them.
+    @MainActor
+    static func check() async {
+        var arguments = UserDefaults.standard.volatileDomain(forName: UserDefaults.argumentDomain)
+        for key in [AppSettings.alertLateNightKey, AppSettings.alertLongSessionKey, AppSettings.alertStorageKey,
+                    AppSettings.alertHotKey, AppSettings.alertBatteryKey, AppSettings.alertAppsKey, AppSettings.alertOfflineKey] {
+            arguments[key] = true
+        }
+        // "Late" from this very hour, and a long stretch after an hour, so those show up too.
+        arguments[AppSettings.lateNightHourKey] = Calendar.current.component(.hour, from: Date()) < 6
+            ? Calendar.current.component(.hour, from: Date()) : 0
+        arguments[AppSettings.longSessionHoursKey] = 1
+        UserDefaults.standard.setVolatileDomain(arguments, forName: UserDefaults.argumentDomain)
+
+        let store = DeviceStore()
+        store.start()
+        try? await Task.sleep(for: .seconds(4))
+        let monitor = Monitor(store: store)
+        monitor.dryRun = true
+        await monitor.tick(force: true)
+        for (serial, state) in monitor.states.sorted(by: { $0.key < $1.key }) {
+            let kind = store.connected.first { $0.serial == serial }?.isNetwork == true ? "network" : "USB"
+            Swift.print("""
+            \(state.name ?? "?") (\(kind)): screen \(state.screen.map { "\($0)" } ?? "?"), on today \(Int(state.screenOnToday ?? -60) / 60) min, \
+            on since \(state.screenOnSince.map { "\($0)" } ?? "-"), storage \(state.storageAvailable ?? 0)/\(state.storageTotal ?? 0), \
+            battery \(state.batteryLevel.map(String.init) ?? "-"), thermal \(state.thermalStatus.map(String.init) ?? "-")
+            """)
+        }
+        // A second round sees the app list again, as the first one only learned it.
+        Swift.print("(apps installed or removed are reported from the second look on)")
+    }
+
     @MainActor
     static func watch() async {
         let store = DeviceStore()
@@ -148,6 +287,19 @@ enum StatusReport {
             if let output = await adb.shell(device.serial, CleanupScan.command, timeout: 300) {
                 let categories = CleanupScan.parse(output)
                 Swift.print("  cleanup: " + categories.map { "\($0.kind) \($0.items.count) items \($0.size / 1_000_000) MB" }.joined(separator: ", "))
+            }
+            if let output = await adb.shell(device.serial, DeviceHealth.command, timeout: 90) {
+                let health = DeviceHealth.parse(output, timeZone: status.timeZone ?? .current)
+                let week = health.crashes.filter { Date().timeIntervalSince($0.date) <= 7 * 86_400 }.count
+                Swift.print("""
+                  health: \(health.crashes.count) crashes on record (\(week) in 7 days), \(health.usage.count) apps with data usage, \
+                \(health.wakeups.count) apps woke it, \(health.jobs.map(\.count).reduce(0, +)) jobs scheduled, \
+                \(health.recentJobs.map(\.count).reduce(0, +)) ran since \(health.recentJobsSince.map { "\($0)" } ?? "?"), \
+                \(health.exempt.count) user + \(health.systemExemptCount) system exempt from battery saving
+                    top data (24 h / 7 d / 30 d MB): \(health.usage.prefix(4).map { "\($0.packages.first ?? "uid \($0.uid)") \($0.day / 1_000_000)/\($0.week / 1_000_000)/\($0.month / 1_000_000)" }.joined(separator: ", "))
+                    top wakeups: \(health.wakeups.prefix(3).map { "\($0.package) \($0.count)" }.joined(separator: ", "))
+                    latest crash: \(health.crashes.first.map { "\($0.date) \($0.kind) \($0.package ?? "-")" } ?? "none")
+                """)
             }
             if let output = await adb.shell(device.serial, Timeline.command, timeout: 30) {
                 let timeline = Timeline.parse(output, timeZone: status.timeZone ?? .current, bootDate: status.bootDate)

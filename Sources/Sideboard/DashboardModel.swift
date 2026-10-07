@@ -45,6 +45,9 @@ final class DashboardModel {
     private(set) var timeline: Timeline?
     private(set) var details: DeviceDetails?
     private(set) var readingDetails = false
+    /// When the status was last read; the monitor reuses fresh readings.
+    private(set) var lastRead: Date?
+    var isRunning: Bool { statusTask != nil }
     private(set) var unreachable = false
     var transfers: [Transfer] = []
     /// Counts finished transfers, so the Files page can reload after an upload.
@@ -53,6 +56,7 @@ final class DashboardModel {
     let apps: AppsModel
     let files: FilesModel
     let cleanup: CleanupModel
+    let health: HealthModel
     private(set) var companion: Companion.Info?
     private(set) var companionChecked = false
     private(set) var companionBusy = false
@@ -83,17 +87,19 @@ final class DashboardModel {
         apps = AppsModel(adb: adb, serial: serial)
         files = FilesModel(adb: adb, serial: serial)
         cleanup = CleanupModel(adb: adb, serial: serial)
+        health = HealthModel(adb: adb, serial: serial)
     }
 
     /// Made-up readings for screenshots.
     init(sample status: DeviceStatus, cpuUsage: Double, timeline: Timeline, details: DeviceDetails, transfers: [Transfer] = [],
-         apps: AppsModel, files: FilesModel, cleanup: CleanupModel, companion: Companion.Info? = nil) {
+         apps: AppsModel, files: FilesModel, cleanup: CleanupModel, health: HealthModel, companion: Companion.Info? = nil) {
         serial = "sample"
         adb = nil
         live = false
         self.apps = apps
         self.files = files
         self.cleanup = cleanup
+        self.health = health
         self.companion = companion
         companionChecked = true
         self.status = status
@@ -152,6 +158,7 @@ final class DashboardModel {
             }
             unreachable = false
             let status = DeviceStatus.parse(output)
+            lastRead = Date()
             if let sample = status.cpu, let previous = self.status?.cpu {
                 cpuUsage = sample.usage(since: previous)
             }
@@ -181,9 +188,18 @@ final class DashboardModel {
                 let new = await Companion.events(adb, serial, since: since)
                 history = history.filter { $0.date < since } + new
             }
-            timeline = Timeline.combine(history + recentEvents, bootDate: status?.bootDate)
+            await rebuildTimeline()
         }
         return isAwake ? Self.awakeInterval : Self.asleepInterval
+    }
+
+    /// Android's 24 hours and the companion's history, added to what this Mac has kept.
+    private func rebuildTimeline() async {
+        var events = history + recentEvents
+        if let adb, let key = await HistoryStore.shared.key(for: serial, adb: adb) {
+            events = HistoryStore.shared.merge(events, key: key)
+        }
+        timeline = Timeline.combine(events, bootDate: status?.bootDate)
     }
 
     // MARK: Companion app
@@ -234,7 +250,7 @@ final class DashboardModel {
         labels = [:]
         icons = [:]
         await refreshCompanion()
-        timeline = Timeline.combine(recentEvents, bootDate: status?.bootDate)
+        await rebuildTimeline()
     }
 
     func typingSession() -> TypingSession? {
@@ -285,6 +301,22 @@ final class DashboardModel {
                 await refresh()
             }
         }
+    }
+
+    /// Opens a web link (or any link an app on the device handles) in the device's browser or app.
+    /// Returns nil when it opened, otherwise why not.
+    func openLink(_ text: String) async -> String? {
+        guard let adb else { return String(localized: "The device didn't answer.") }
+        var link = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !link.isEmpty, !link.contains("\n") else { return String(localized: "That doesn't look like a link.") }
+        if !link.contains(":") { link = "https://" + link }
+        guard let output = await adb.shellOutput(serial, "am start -a android.intent.action.VIEW -d \(Adb.quote(link))") else {
+            return String(localized: "The device didn't answer.")
+        }
+        if output.contains("unable to resolve Intent") || output.contains("No Activity found") {
+            return String(localized: "No app on the device can open this link.")
+        }
+        return output.contains("Error") ? output : nil
     }
 
     /// PNG data.

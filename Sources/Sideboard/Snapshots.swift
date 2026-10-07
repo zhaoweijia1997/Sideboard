@@ -15,8 +15,9 @@ enum Snapshots {
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         for language in AppLanguage.allCases where language != .system {
             let pages: [(String, DeviceStore, DashboardView.Page, CGFloat)] = [
-                ("overview", .sample, .overview, 1400),
+                ("overview", .sample, .overview, 1640),
                 ("details", .sample, .details, 1400),
+                ("health", .sample, .health, 1000),
                 ("apps", .sample, .apps, size.height),
                 ("files", .sample, .files, size.height),
                 ("cleanup", .sample, .cleanup, size.height),
@@ -40,6 +41,8 @@ enum Snapshots {
             for dark in [false, true] {
                 let suffix = "\(language.rawValue)-\(dark ? "dark" : "light").png"
                 let sheets: [(String, AnyView)] = [
+                    ("settings", AnyView(SettingsView())),
+                    ("menubar", AnyView(MenuBarPanel(store: .sample, monitor: .sample))),
                     ("add", AnyView(AddDeviceView(store: .sample))),
                     ("remote", AnyView(RemoteView(model: .sample))),
                     ("about", AnyView(AboutView())),
@@ -180,11 +183,14 @@ extension DashboardModel {
         // A week of evenings before that, as the companion app would have kept them.
         var week: [Timeline.Event] = []
         let midnight = Calendar.current.startOfDay(for: Date())
-        for day in 2...7 {
-            let start = midnight.addingTimeInterval(Double(-day * 86_400) + Double(18 + day % 3) * 3600)
+        // Four weeks: evenings on weekdays, late mornings and afternoons at weekends.
+        for day in 2...28 {
+            let date = midnight.addingTimeInterval(Double(-day * 86_400))
+            let weekend = [1, 7].contains(Calendar.current.component(.weekday, from: date))
+            let start = date.addingTimeInterval(Double(weekend ? 10 + day % 3 : 18 + day % 3) * 3600)
             week.append(.init(date: start, kind: .screenOn))
             week.append(.init(date: start.addingTimeInterval(60), kind: .app(day % 2 == 0 ? "com.netflix.ninja" : "com.google.android.youtube.tv")))
-            week.append(.init(date: start.addingTimeInterval(Double(2 + day % 4) * 3600), kind: .screenOff))
+            week.append(.init(date: start.addingTimeInterval(Double(weekend ? 4 + day % 3 : 2 + day % 3) * 3600), kind: .screenOff))
         }
         let timeline = Timeline.combine(week + [
             .init(date: ago(23, 30), kind: .screenOn),
@@ -204,7 +210,7 @@ extension DashboardModel {
                                   Transfer(name: "Holiday Photos.zip", kind: .send(folder: Adb.downloadFolder), state: .done),
                                   Transfer(name: "MediaPlayer-2.4.apk", kind: .install, state: .running),
                               ],
-                              apps: .sample, files: .sample, cleanup: .sample,
+                              apps: .sample, files: .sample, cleanup: .sample, health: .sample,
                               companion: Companion.Info(version: "1.0", since: Date().addingTimeInterval(-20 * 86_400), events: 2_416,
                                                         usageAccess: true))
     }
@@ -272,5 +278,67 @@ extension CleanupModel {
                 CleanupItem(path: "/sdcard/Movies/Concert.mkv", size: 3_900 * mb, modified: Date().addingTimeInterval(-14 * 86_400), selected: false),
             ], selected: false),
         ])
+    }
+}
+
+extension HealthModel {
+    static var sample: HealthModel {
+        let mb: Int64 = 1_000_000
+        let now = Date()
+        func ago(_ hours: Double) -> Date { now.addingTimeInterval(-hours * 3600) }
+        var health = DeviceHealth()
+        health.usage = [
+            DeviceHealth.Usage(uid: 10068, packages: ["com.google.android.youtube.tv"], day: 2_350 * mb, week: 14_800 * mb, month: 61_200 * mb),
+            DeviceHealth.Usage(uid: 10071, packages: ["com.netflix.ninja"], day: 900 * mb, week: 7_400 * mb, month: 30_100 * mb),
+            DeviceHealth.Usage(uid: 10090, packages: ["com.spotify.tv.android"], day: 120 * mb, week: 610 * mb, month: 2_400 * mb),
+            DeviceHealth.Usage(uid: 1000, packages: [], day: 64 * mb, week: 420 * mb, month: 1_900 * mb),
+            DeviceHealth.Usage(uid: 1020, packages: [], day: 38 * mb, week: 260 * mb, month: 1_100 * mb),
+            DeviceHealth.Usage(uid: 2000, packages: [], day: 12 * mb, week: 40 * mb, month: 90 * mb),
+            DeviceHealth.Usage(uid: 10095, packages: ["com.example.weather"], day: 2 * mb, week: 15 * mb, month: 60 * mb),
+        ]
+        health.crashes = [
+            DeviceHealth.Crash(date: ago(3), kind: .appCrash, process: "com.example.weather"),
+            DeviceHealth.Crash(date: ago(27), kind: .appFreeze, process: "com.example.weather"),
+            DeviceHealth.Crash(date: ago(50), kind: .appCrash, process: "org.xbmc.kodi"),
+            DeviceHealth.Crash(date: ago(200), kind: .nativeCrash, process: nil),
+        ]
+        health.wakeups = [
+            DeviceHealth.Count(package: "android", count: 212), DeviceHealth.Count(package: "com.example.weather", count: 96),
+            DeviceHealth.Count(package: "com.android.networkstack.inprocess", count: 30),
+        ]
+        health.exempt = ["org.xbmc.kodi"]
+        health.systemExemptCount = 24
+        health.recentJobs = [
+            DeviceHealth.Count(package: "com.example.weather", count: 18), DeviceHealth.Count(package: "android", count: 9),
+            DeviceHealth.Count(package: "com.google.android.youtube.tv", count: 4),
+        ]
+        health.recentJobsSince = ago(6)
+        health.jobs = [
+            DeviceHealth.Count(package: "android", count: 21), DeviceHealth.Count(package: "com.example.weather", count: 7),
+            DeviceHealth.Count(package: "com.google.android.youtube.tv", count: 5), DeviceHealth.Count(package: "org.xbmc.kodi", count: 2),
+        ]
+        return HealthModel(sample: health)
+    }
+}
+
+extension Monitor {
+    /// Made-up readings for the menu bar panel.
+    static var sample: Monitor {
+        let monitor = Monitor(store: .sample)
+        var tv = DeviceState()
+        tv.name = "Living Room TV"
+        tv.isTV = true
+        tv.screen = .on
+        tv.storageAvailable = 21_500_000_000
+        tv.storageTotal = 32_000_000_000
+        tv.screenOnToday = 2 * 3600 + 22 * 60
+        var phone = DeviceState()
+        phone.name = "Pixel Phone"
+        phone.screen = .off
+        phone.batteryLevel = 64
+        phone.storageAvailable = 48_000_000_000
+        phone.storageTotal = 128_000_000_000
+        monitor.showForSnapshot(["192.168.1.42:5555": tv, "usb-sample": phone])
+        return monitor
     }
 }
