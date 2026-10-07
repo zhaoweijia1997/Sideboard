@@ -57,6 +57,7 @@ final class DashboardModel {
     let files: FilesModel
     let cleanup: CleanupModel
     let health: HealthModel
+    let recorder: ScreenRecorder
     private(set) var companion: Companion.Info?
     private(set) var companionChecked = false
     private(set) var companionBusy = false
@@ -88,6 +89,7 @@ final class DashboardModel {
         files = FilesModel(adb: adb, serial: serial)
         cleanup = CleanupModel(adb: adb, serial: serial)
         health = HealthModel(adb: adb, serial: serial)
+        recorder = ScreenRecorder(adb: adb, serial: serial)
     }
 
     /// Made-up readings for screenshots.
@@ -100,6 +102,7 @@ final class DashboardModel {
         self.files = files
         self.cleanup = cleanup
         self.health = health
+        recorder = ScreenRecorder(adb: nil, serial: "sample")
         self.companion = companion
         companionChecked = true
         self.status = status

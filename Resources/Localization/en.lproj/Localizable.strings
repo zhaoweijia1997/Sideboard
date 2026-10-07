@@ -14,6 +14,7 @@
 "A network device stops answering while its screen is on" = "A network device stops answering while its screen is on";
 "About Sideboard" = "About Sideboard";
 "adb (Sideboard and other tools)" = "adb (Sideboard and other tools)";
+"adb didn't start." = "adb didn't start.";
 "adb isn't installed" = "adb isn't installed";
 "adb sees the device but can't talk to it. Try reconnecting the cable, or turning debugging off and on again on the device." = "adb sees the device but can't talk to it. Try reconnecting the cable, or turning debugging off and on again on the device.";
 "Add a Device" = "Add a Device";
@@ -81,6 +82,7 @@
 "Couldn't read the app list." = "Couldn't read the app list.";
 "Couldn't read the device." = "Couldn't read the device.";
 "Couldn't read this folder." = "Couldn't read this folder.";
+"Couldn't record the screen" = "Couldn't record the screen";
 "Couldn't save it in the Pictures folder." = "Couldn't save it in the Pictures folder.";
 "Couldn't scan the device." = "Couldn't scan the device.";
 "Couldn't take a screenshot." = "Couldn't take a screenshot.";
@@ -126,6 +128,7 @@
 "Get Device Clipboard" = "Get Device Clipboard";
 "Got the device's clipboard." = "Got the device's clipboard.";
 "Governor" = "Governor";
+"HDMI inputs and protected video come out black, and there's no sound." = "HDMI inputs and protected video come out black, and there's no sound.";
 "Health" = "Health";
 "Hidden files" = "Hidden files";
 "History kept on this Mac: %@" = "History kept on this Mac: %@";
@@ -243,7 +246,9 @@
 "Ran since %@" = "Ran since %@";
 "Reading the apps…" = "Reading the apps…";
 "Reading the device…" = "Reading the device…";
+"Record Screen" = "Record Screen";
 "Recording since %@ · %lld events kept" = "Recording since %@ · %lld events kept";
+"Records the device's screen, up to 3 minutes, without sound. HDMI inputs and protected video come out black." = "Records the device's screen, up to 3 minutes, without sound. HDMI inputs and protected video come out black.";
 "Refresh rate" = "Refresh rate";
 "Reload" = "Reload";
 "Remote" = "Remote";
@@ -261,6 +266,7 @@
 "Running hot" = "Running hot";
 "Save APK to Mac…" = "Save APK to Mac…";
 "Save Here" = "Save Here";
+"Saved on this Mac in Movies → Sideboard. Nothing is kept on the device." = "Saved on this Mac in Movies → Sideboard. Nothing is kept on the device.";
 "Saved on this Mac in Pictures → Sideboard. Nothing is kept on the device." = "Saved on this Mac in Pictures → Sideboard. Nothing is kept on the device.";
 "Saved on this Mac" = "Saved on this Mac";
 "Save…" = "Save…";
@@ -319,6 +325,7 @@
 "Still on at %@. The screen has been on since %@." = "Still on at %@. The screen has been on since %@.";
 "Still on at %@." = "Still on at %@.";
 "Still on late at night" = "Still on late at night";
+"Stop recording" = "Stop recording";
 "Stopped" = "Stopped";
 "Storage almost full (less than 10% free)" = "Storage almost full (less than 10% free)";
 "Storage is almost full: %@ free." = "Storage is almost full: %@ free.";
@@ -337,12 +344,14 @@
 "Temporary files apps keep to load faster. Android clears them for all apps at once, and the apps rebuild what they need." = "Temporary files apps keep to load faster. Android clears them for all apps at once, and the apps rebuild what they need.";
 "That doesn't look like a link." = "That doesn't look like a link.";
 "The app and its data are removed from the device." = "The app and its data are removed from the device.";
+"The device couldn't record its screen." = "The device couldn't record its screen.";
 "The device didn't answer. Check that it's on, on the same network, and that the address is right. If all of that is fine, macOS may be keeping adb off the local network: try Restart adb." = "The device didn't answer. Check that it's on, on the same network, and that the address is right. If all of that is fine, macOS may be keeping adb off the local network: try Restart adb.";
 "The device didn't answer." = "The device didn't answer.";
 "The device needs this app to work (home screen, keyboard or a core part of Android), so Sideboard won't turn it off or remove it." = "The device needs this app to work (home screen, keyboard or a core part of Android), so Sideboard won't turn it off or remove it.";
 "The device took too long to answer. Check that it's on and on the same network." = "The device took too long to answer. Check that it's on and on the same network.";
 "The device's clipboard is empty." = "The device's clipboard is empty.";
 "The devices keep their own: Android's last 24 hours, and 90 days with the companion app." = "The devices keep their own: Android's last 24 hours, and 90 days with the companion app.";
+"The recording came out empty." = "The recording came out empty.";
 "The screen has been on for %@ in a row." = "The screen has been on for %@ in a row.";
 "They're removed from the device for good: there's no Trash there." = "They're removed from the device for good: there's no Trash there.";
 "Thumbnail caches" = "Thumbnail caches";

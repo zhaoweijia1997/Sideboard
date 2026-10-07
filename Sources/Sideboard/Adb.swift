@@ -175,6 +175,40 @@ struct Adb: Sendable {
         text.split(separator: "\n").last.map { String($0).replacingOccurrences(of: "adb: error: ", with: "") } ?? text
     }
 
+    // MARK: Long-running commands
+
+    /// Starts adb and returns at once, for commands that run until they're stopped (screen
+    /// recording). Output arrives line by line through `onOutput`; `onExit` gets the exit status.
+    /// The adb server is already running by then, so the pipe can't be inherited by it.
+    func launch(_ arguments: [String], onOutput: @escaping @Sendable (String) -> Void,
+                onExit: @escaping @Sendable (Int32) -> Void) -> Process? {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: path)
+        process.arguments = arguments
+        process.standardInput = FileHandle.nullDevice
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = pipe
+        pipe.fileHandleForReading.readabilityHandler = { handle in
+            let data = handle.availableData
+            if data.isEmpty {
+                handle.readabilityHandler = nil
+            } else {
+                onOutput(String(decoding: data, as: UTF8.self))
+            }
+        }
+        process.terminationHandler = { process in
+            pipe.fileHandleForReading.readabilityHandler = nil
+            onExit(process.terminationStatus)
+        }
+        do {
+            try process.run()
+        } catch {
+            return nil
+        }
+        return process
+    }
+
     // MARK: Running adb
 
     struct Output: Sendable {

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.0 — 2026-10-07
+
+- **Screen recording** (the record button next to Screenshot): records the device's screen
+  with Android's `screenrecord`, up to 3 minutes and without sound, showing the elapsed time.
+  Stopping sends it an interrupt so the video is finished properly; it then comes to the Mac
+  (Movies → Sideboard) with a preview, and the temporary file on the device is deleted. The
+  3-minute limit ends it the same way. HDMI inputs and protected video come out black.
+
 ## 0.4.0 — 2026-10-07
 
 - **Menu bar and notifications** (Settings): keep running with a menu bar icon after the window

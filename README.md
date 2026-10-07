@@ -18,7 +18,7 @@ history, app names and icons, and typing in any language.
   <img src="docs/screenshots/overview-en-light.png" width="760" alt="Sideboard showing a TV's screen, app, playback, uptime, CPU, memory, storage, network, volume and its last 24 hours">
 </p>
 
-> **Status: early preview (0.4).** Watches your devices from the menu bar with notifications,
+> **Status: early preview (0.5).** Watches your devices from the menu bar with notifications,
 > keeps their history on your Mac, gives them a health checkup, manages apps and files, cleans
 > up, and types in any language with the optional companion app.
 
@@ -138,6 +138,10 @@ its history.
   Return, Esc and Space work too.
 - **Screenshot**: the picture comes straight to your Mac and is saved in Pictures →
   Sideboard. Nothing is written on the device.
+- **Screen recording**: up to 3 minutes per recording, no sound (Android's own limit). The
+  video is saved in Movies → Sideboard and the temporary file on the device is deleted. It only
+  records what Android draws: HDMI inputs and protected video come out black, and the video
+  only advances while something on screen changes.
 - **Send files**: drop files on the window (or use Send) and they go into the device's
   Download folder.
 - **Install apps**: drop an `.apk` and it's installed or updated.
@@ -225,7 +229,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 - [x] Apps: list, uninstall, turn off preinstalled apps (reversibly) (0.2)
 - [x] Files and cleanup (0.2)
 - [x] Menu bar mode and notifications, history on the Mac, health checkup (0.4)
-- [ ] Live screen view and screen recording
+- [x] Screen recording (0.5)
+- [ ] Live screen view
 - [ ] Update reminders for open-source apps; export an app list to set up a new device
 
 ## Support Sideboard

@@ -14,6 +14,7 @@
 "A network device stops answering while its screen is on" = "网络设备在亮屏时失去响应";
 "About Sideboard" = "关于 Sideboard";
 "adb (Sideboard and other tools)" = "adb（Sideboard 和其他工具）";
+"adb didn't start." = "adb 没有启动。";
 "adb isn't installed" = "还没有安装 adb";
 "adb sees the device but can't talk to it. Try reconnecting the cable, or turning debugging off and on again on the device." = "adb 能看到这台设备，但无法和它通信。试试重新插拔数据线，或者在设备上把调试关掉再打开。";
 "Add a Device" = "添加设备";
@@ -81,6 +82,7 @@
 "Couldn't read the app list." = "无法读取应用列表。";
 "Couldn't read the device." = "无法读取设备。";
 "Couldn't read this folder." = "无法读取这个文件夹。";
+"Couldn't record the screen" = "无法录屏";
 "Couldn't save it in the Pictures folder." = "无法存到“图片”文件夹。";
 "Couldn't scan the device." = "无法扫描设备。";
 "Couldn't take a screenshot." = "无法截屏。";
@@ -126,6 +128,7 @@
 "Get Device Clipboard" = "取回设备剪贴板";
 "Got the device's clipboard." = "已取回设备的剪贴板。";
 "Governor" = "调频策略";
+"HDMI inputs and protected video come out black, and there's no sound." = "HDMI 输入和受保护的视频录出来是黑的，而且没有声音。";
 "Health" = "体检";
 "Hidden files" = "隐藏文件";
 "History kept on this Mac: %@" = "这台 Mac 上保存的历史记录：%@";
@@ -243,7 +246,9 @@
 "Ran since %@" = "自 %@ 以来运行过的";
 "Reading the apps…" = "正在读取应用…";
 "Reading the device…" = "正在读取设备…";
+"Record Screen" = "录屏";
 "Recording since %@ · %lld events kept" = "从 %@ 开始记录 · 已保存 %lld 条";
+"Records the device's screen, up to 3 minutes, without sound. HDMI inputs and protected video come out black." = "录下设备的屏幕，最长 3 分钟，没有声音。HDMI 输入和受保护的视频录出来是黑的。";
 "Refresh rate" = "刷新率";
 "Reload" = "刷新";
 "Remote" = "遥控器";
@@ -261,6 +266,7 @@
 "Running hot" = "发热";
 "Save APK to Mac…" = "把 APK 存到 Mac…";
 "Save Here" = "存到这里";
+"Saved on this Mac in Movies → Sideboard. Nothing is kept on the device." = "已存到这台 Mac 的“影片 → Sideboard”，设备上不留任何文件。";
 "Saved on this Mac in Pictures → Sideboard. Nothing is kept on the device." = "已存到这台 Mac 的“图片 → Sideboard”，设备上不留任何文件。";
 "Saved on this Mac" = "已存到这台 Mac";
 "Save…" = "存储…";
@@ -319,6 +325,7 @@
 "Still on at %@. The screen has been on since %@." = "%@ 了还开着，屏幕从 %@ 一直亮到现在。";
 "Still on at %@." = "%@ 了还开着。";
 "Still on late at night" = "深夜还开着";
+"Stop recording" = "停止录屏";
 "Stopped" = "已停止";
 "Storage almost full (less than 10% free)" = "存储空间快满了（可用不足 10%）";
 "Storage is almost full: %@ free." = "存储空间快满了：只剩 %@。";
@@ -337,12 +344,14 @@
 "Temporary files apps keep to load faster. Android clears them for all apps at once, and the apps rebuild what they need." = "应用为了加载更快而保存的临时文件。安卓会一次清掉所有应用的缓存，应用会自己重建需要的部分。";
 "That doesn't look like a link." = "这看起来不像链接。";
 "The app and its data are removed from the device." = "应用和它的数据会从设备上删除。";
+"The device couldn't record its screen." = "设备无法录制它的屏幕。";
 "The device didn't answer. Check that it's on, on the same network, and that the address is right. If all of that is fine, macOS may be keeping adb off the local network: try Restart adb." = "设备没有响应。请确认它已开机、在同一个网络里，并且地址正确。如果都没问题，可能是 macOS 不让 adb 访问本地网络：试试“重启 adb”。";
 "The device didn't answer." = "设备没有响应。";
 "The device needs this app to work (home screen, keyboard or a core part of Android), so Sideboard won't turn it off or remove it." = "设备离不开这个应用（主屏幕、输入法或安卓核心组件），所以 Sideboard 不会停用或删除它。";
 "The device took too long to answer. Check that it's on and on the same network." = "设备响应太慢。请确认它已开机，并且在同一个网络里。";
 "The device's clipboard is empty." = "设备的剪贴板是空的。";
 "The devices keep their own: Android's last 24 hours, and 90 days with the companion app." = "设备上自己的记录不受影响：安卓的最近 24 小时，以及配套 App 保存的 90 天。";
+"The recording came out empty." = "录出来是空的。";
 "The screen has been on for %@ in a row." = "屏幕已经连续亮了 %@。";
 "They're removed from the device for good: there's no Trash there." = "会从设备上彻底删除：设备上没有废纸篓。";
 "Thumbnail caches" = "缩略图缓存";

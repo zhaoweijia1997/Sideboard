@@ -105,6 +105,19 @@ struct DashboardView: View {
         .sheet(isPresented: $openingLink) {
             OpenLinkView(model: model)
         }
+        .sheet(isPresented: Binding(get: { if case .saved = model.recorder.state { true } else { false } },
+                                    set: { if !$0 { model.recorder.dismiss() } })) {
+            if case let .saved(url) = model.recorder.state {
+                RecordingView(url: url) { model.recorder.dismiss() }
+            }
+        }
+        .alert(Text("Couldn't record the screen"),
+               isPresented: Binding(get: { if case .failed = model.recorder.state { true } else { false } },
+                                    set: { if !$0 { model.recorder.dismiss() } })) {
+            Button("OK") { model.recorder.dismiss() }
+        } message: {
+            if case let .failed(reason) = model.recorder.state { Text(verbatim: reason) }
+        }
         .alert(Text("Couldn't open the link"), isPresented: Binding(get: { linkFailure != nil }, set: { if !$0 { linkFailure = nil } })) {
             Button("OK") { linkFailure = nil }
         } message: {
@@ -178,6 +191,7 @@ struct DashboardView: View {
             } label: {
                 Label("Screenshot", systemImage: "camera.viewfinder")
             }
+            RecordButton(recorder: model.recorder, name: entry.name ?? model.status?.model)
             Menu {
                 Button("Send Files…") { chooseFiles(apps: false) }
                 Button("Install App…") { chooseFiles(apps: true) }
