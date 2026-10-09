@@ -25,7 +25,7 @@ history, app names and icons, and typing in any language.
 ## What it shows
 
 **Overview**
-- Screen: on, off (standby on TVs), screensaver; how long it's been on today
+- Screen: on, off (standby on TVs), screensaver; how long it's been on today; whether it deep sleeps with the screen off
 - The app in front, and what's playing (with the title, or the TV input)
 - Running time since it was switched on
 - CPU usage, cores and speed; temperature, if the device reports one (many TVs don't)

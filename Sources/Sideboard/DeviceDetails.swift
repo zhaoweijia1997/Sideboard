@@ -66,6 +66,18 @@ struct DeviceDetails: Equatable, Sendable {
     var stayOnWhilePluggedIn: Int?
     var screensaverEnabled: Bool?
 
+    /// Seconds since boot including deep sleep (/proc/uptime), and the awake part of it
+    /// (Android's uptimeMillis, from `dumpsys power`). The difference is time spent deep asleep.
+    var sinceBoot: TimeInterval?
+    var awakeSinceBoot: TimeInterval?
+    /// Why the screen last went off: sleep_button, timeout, hdmi…
+    var lastSleepReason: String?
+
+    var deepSleep: TimeInterval? {
+        guard let sinceBoot, let awakeSinceBoot else { return nil }
+        return max(sinceBoot - awakeSinceBoot, 0)
+    }
+
     var packageCount: Int?
     var userPackageCount: Int?
 
@@ -86,6 +98,7 @@ struct DeviceDetails: Equatable, Sendable {
         "echo @@settings",
         "settings get system screen_off_timeout; settings get secure sleep_timeout; settings get secure attentive_timeout",
         "settings get global stay_on_while_plugged_in; settings get secure screensaver_enabled",
+        "echo @@sleep", "cat /proc/uptime; dumpsys power 2>/dev/null | grep -E 'mLastWakeTime=|mLastSleepReason='",
         "echo @@packages", "pm list packages 2>/dev/null | wc -l; pm list packages -3 2>/dev/null | wc -l",
         "true",
     ].joined(separator: "; ")
@@ -179,6 +192,16 @@ struct DeviceDetails: Equatable, Sendable {
         details.attentiveTimeout = value("settings", 2).flatMap { Int($0) }
         details.stayOnWhilePluggedIn = value("settings", 3).flatMap { Int($0) }
         details.screensaverEnabled = value("settings", 4).flatMap { Int($0) }.map { $0 != 0 }
+
+        for line in lines("sleep") {
+            if let match = line.firstMatch(of: #/^(\d+\.\d+)\s/#) { details.sinceBoot = Double(match.1) }
+            // "mLastWakeTime=170507452 (57974363 ms ago)": both in uptimeMillis, so their sum is now.
+            if let match = line.firstMatch(of: /mLastWakeTime=(\d+) \((\d+) ms ago\)/),
+               let at = Double(match.1), let ago = Double(match.2) {
+                details.awakeSinceBoot = (at + ago) / 1000
+            }
+            if let match = line.firstMatch(of: /mLastSleepReason=(\S+)/) { details.lastSleepReason = String(match.1) }
+        }
 
         details.packageCount = value("packages", 0).flatMap { Int($0) }
         details.userPackageCount = value("packages", 1).flatMap { Int($0) }

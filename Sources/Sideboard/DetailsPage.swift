@@ -188,6 +188,15 @@ struct DetailsPage: View {
                 InfoRow("Turns off with no input after", timeoutText(details.attentiveTimeout))
             }
             InfoRow("Stays awake while plugged in", Text(details.stayOnWhilePluggedIn.map { $0 != 0 } == true ? "On" : "Off"))
+            if let deep = details.deepSleep, let since = details.sinceBoot {
+                // Under a minute is rounding between the two clocks.
+                InfoRow("Deep sleep since it started", deep < 60
+                    ? Text("Never — it stays awake with the screen off")
+                    : Text("\(formats.duration(deep)) of \(formats.duration(since))"))
+            }
+            if let reason = details.lastSleepReason {
+                InfoRow("Screen last went off because of", Text(verbatim: reason))
+            }
             Text("Sideboard only reads these settings and never changes them. While the screen is off it checks in once a minute, so the device can rest.")
                 .font(.caption)
                 .foregroundStyle(.secondary)

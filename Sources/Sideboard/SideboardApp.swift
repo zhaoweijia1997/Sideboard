@@ -2,14 +2,53 @@ import AppKit
 import SwiftUI
 import UserNotifications
 
+/// Command-line runs are handled before SwiftUI starts: creating the menu bar item, even one
+/// that's never shown, makes macOS store "this icon is hidden" in the user's preferences.
 @main
+enum Main {
+    static func main() {
+        let arguments = CommandLine.arguments
+        guard ["--status", "--watch", "--check", "--snapshot"].contains(where: arguments.contains) else {
+            SideboardApp.main()
+            return
+        }
+        AppSettings.register()
+        _ = NSApplication.shared
+        // --status: what Sideboard reads from each connected device, as text, for bug reports.
+        // Shows no serial numbers, addresses or names of networks.
+        if arguments.contains("--status") {
+            Task { @MainActor in
+                await StatusReport.print()
+                exit(0)
+            }
+        // --watch: runs the device list and dashboards as the window does, for 20 seconds, and
+        // prints what they saw. No serial numbers or addresses.
+        } else if arguments.contains("--watch") {
+            Task { @MainActor in
+                await StatusReport.watch()
+                exit(0)
+            }
+        // --check: one round of the background monitor with every notification switched on,
+        // printing what it would send instead of sending it.
+        } else if arguments.contains("--check") {
+            Task { @MainActor in
+                await StatusReport.check()
+                exit(0)
+            }
+        } else if let flag = arguments.firstIndex(of: "--snapshot") {
+            let folder = arguments.dropFirst(flag + 1).first ?? "."
+            MainActor.assumeIsolated { Snapshots.render(to: URL(fileURLWithPath: folder)) }
+            exit(0)
+        }
+        RunLoop.main.run()
+    }
+}
+
 struct SideboardApp: App {
     @NSApplicationDelegateAdaptor private var appDelegate: AppDelegate
     @AppStorage(AppLanguage.storageKey) private var language: AppLanguage = .system
     @AppStorage(AppSettings.backgroundModeKey) private var backgroundMode = false
     private let models = AppModels.shared
-    /// Runs for reports and screenshots mustn't put an icon in the menu bar.
-    private let commandLineRun = ["--status", "--watch", "--check", "--snapshot"].contains { CommandLine.arguments.contains($0) }
 
     var body: some Scene {
         Window("Sideboard", id: "main") {
@@ -37,7 +76,7 @@ struct SideboardApp: App {
         }
 
         // Only while "Run in the background with a menu bar icon" is on.
-        MenuBarExtra(isInserted: commandLineRun ? .constant(false) : $backgroundMode) {
+        MenuBarExtra(isInserted: $backgroundMode) {
             MenuBarPanel(store: models.store, monitor: models.monitor)
                 .environment(\.locale, language.locale)
         } label: {
@@ -50,42 +89,6 @@ struct SideboardApp: App {
 final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         AppSettings.register()
-        // Sideboard.app/Contents/MacOS/Sideboard --status: what Sideboard reads from each connected
-        // device, as text, for bug reports. Shows no serial numbers, addresses or names of networks.
-        if CommandLine.arguments.contains("--status") {
-            let done = DispatchSemaphore(value: 0)
-            Task.detached {
-                await StatusReport.print()
-                done.signal()
-            }
-            done.wait()
-            exit(0)
-        }
-        // Sideboard.app/Contents/MacOS/Sideboard --watch: runs the device list and dashboards as the
-        // window does, for 20 seconds, and prints what they saw. No serial numbers or addresses.
-        if CommandLine.arguments.contains("--watch") {
-            Task { @MainActor in
-                await StatusReport.watch()
-                exit(0)
-            }
-            return
-        }
-        // Sideboard.app/Contents/MacOS/Sideboard --check: one round of the background monitor with every
-        // notification switched on, printing what it would send instead of sending it.
-        if CommandLine.arguments.contains("--check") {
-            Task { @MainActor in
-                await StatusReport.check()
-                exit(0)
-            }
-            return
-        }
-        // Sideboard.app/Contents/MacOS/Sideboard --snapshot <folder>
-        if let flag = CommandLine.arguments.firstIndex(of: "--snapshot") {
-            let folder = CommandLine.arguments.dropFirst(flag + 1).first ?? "."
-            MainActor.assumeIsolated { Snapshots.render(to: URL(fileURLWithPath: folder)) }
-            exit(0)
-        }
-
         if Monitor.canNotify { UNUserNotificationCenter.current().delegate = self }
         // "Open on Android Device" in the Services menu of other apps.
         NSApp.servicesProvider = self

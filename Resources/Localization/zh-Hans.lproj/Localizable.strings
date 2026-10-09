@@ -415,3 +415,6 @@
 "Wi-Fi" = "Wi-Fi";
 "Wired" = "有线";
 "Yesterday" = "昨天";
+"Deep sleep since it started" = "开机以来深度睡眠";
+"Never — it stays awake with the screen off" = "没有——熄屏后也一直醒着";
+"Screen last went off because of" = "上次熄屏的原因";

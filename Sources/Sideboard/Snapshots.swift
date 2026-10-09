@@ -179,6 +179,9 @@ extension DashboardModel {
         details.sleepTimeout = 14_400_000
         details.attentiveTimeout = 14_400_000
         details.stayOnWhilePluggedIn = 0
+        details.sinceBoot = 9 * 3600 + 42 * 60
+        details.awakeSinceBoot = 6 * 3600 + 10 * 60
+        details.lastSleepReason = "timeout"
         details.screensaverEnabled = true
         details.packageCount = 214
         details.userPackageCount = 12

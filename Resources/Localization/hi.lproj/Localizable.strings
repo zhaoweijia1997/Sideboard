@@ -415,3 +415,6 @@
 "Wi-Fi" = "Wi-Fi";
 "Wired" = "वायर्ड";
 "Yesterday" = "कल";
+"Deep sleep since it started" = "चालू होने के बाद से गहरी नींद";
+"Never — it stays awake with the screen off" = "कभी नहीं — स्क्रीन बंद होने पर भी जागा रहता है";
+"Screen last went off because of" = "पिछली बार स्क्रीन बंद होने की वजह";

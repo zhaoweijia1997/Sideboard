@@ -27,13 +27,17 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.6.0</string>
+	<string>0.6.1</string>
 	<key>CFBundleVersion</key>
-	<string>7</string>
+	<string>8</string>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.utilities</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>14.0</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSHumanReadableCopyright</key>
+	<string>MIT License</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Sideboard finds Android devices on your local network and connects to them with adb.</string>
 	<key>NSServices</key>
@@ -57,9 +61,5 @@
 			</array>
 		</dict>
 	</array>
-	<key>NSHighResolutionCapable</key>
-	<true/>
-	<key>NSHumanReadableCopyright</key>
-	<string>MIT License</string>
 </dict>
 </plist>

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.6.1 — 2026-10-09
+
+- **Deep sleep** on the Details page (Power and standby): how long the device has been in deep
+  sleep since it started, from the difference between Android's two clocks (one stops in deep
+  sleep, one doesn't), and why the screen last went off. Many TVs and devices on USB never deep
+  sleep with the screen off.
+- Fixed: running Sideboard from the command line (`--status`, `--watch`, `--check`,
+  `--snapshot`) could leave the menu bar icon hidden — macOS remembered it as hidden in the
+  user's settings. Those runs now happen before the app starts.
+
 ## 0.6.0 — 2026-10-07
 
 - **Live screen** (the first button in a device's header): the device's screen in a window of its

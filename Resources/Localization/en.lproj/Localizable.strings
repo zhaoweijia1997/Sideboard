@@ -415,3 +415,6 @@
 "Wi-Fi" = "Wi-Fi";
 "Wired" = "Wired";
 "Yesterday" = "Yesterday";
+"Deep sleep since it started" = "Deep sleep since it started";
+"Never — it stays awake with the screen off" = "Never — it stays awake with the screen off";
+"Screen last went off because of" = "Screen last went off because of";

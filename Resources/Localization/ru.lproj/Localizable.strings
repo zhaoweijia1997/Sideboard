@@ -415,3 +415,6 @@
 "Wi-Fi" = "Wi-Fi";
 "Wired" = "Проводная";
 "Yesterday" = "Вчера";
+"Deep sleep since it started" = "Глубокий сон с включения";
+"Never — it stays awake with the screen off" = "Не было — с выключенным экраном не засыпает";
+"Screen last went off because of" = "Почему экран погас в последний раз";

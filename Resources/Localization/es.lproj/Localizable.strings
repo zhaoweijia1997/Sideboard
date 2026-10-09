@@ -415,3 +415,6 @@
 "Wi-Fi" = "Wi-Fi";
 "Wired" = "Por cable";
 "Yesterday" = "Ayer";
+"Deep sleep since it started" = "Reposo profundo desde que se encendió";
+"Never — it stays awake with the screen off" = "Nunca: sigue despierto con la pantalla apagada";
+"Screen last went off because of" = "Motivo del último apagado de pantalla";
