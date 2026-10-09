@@ -145,7 +145,11 @@
 
 ## 安装
 
-暂时还没有发布安装包，目前请从源码编译。
+从 [Releases](https://github.com/zhaoweijia1997/Sideboard/releases) 下载 `Sideboard-<版本>.dmg`，
+打开后把 Sideboard 拖进“应用程序”。
+
+这个 App 没有经过苹果公证，第一次双击 macOS 不让打开：右键 Sideboard.app →“打开”，
+或者先打开一次，再到“系统设置 → 隐私与安全性”里点“仍要打开”。之后就能正常打开了。
 
 需要 macOS 14 Sonoma 或更新版本，Apple 芯片和 Intel 都可以。
 

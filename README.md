@@ -195,7 +195,12 @@ network.
 
 ## Install
 
-Releases aren't published yet. For now, build from source.
+Download `Sideboard-<version>.dmg` from [Releases](https://github.com/zhaoweijia1997/Sideboard/releases),
+open it and drag Sideboard to Applications.
+
+The app isn't notarized by Apple, so the first time macOS won't open it from a double-click:
+right-click Sideboard.app → **Open**, or open it once and then click **Open Anyway** in
+System Settings → Privacy & Security. After that it opens normally.
 
 Requires macOS 14 Sonoma or later, on Apple silicon or Intel.
 
