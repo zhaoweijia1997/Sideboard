@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.7.0 — 2026-10-11
+
+- **The mouse is a finger in the live screen.** Press, drag and let go, and the device gets a
+  finger going down, moving and lifting as it happens: lists follow the mouse and fling when
+  you let go, sliders drag, a long press is a long press. Before, a drag was sent as one swipe
+  after the button came up.
+  - Two fingers on the trackpad drag one finger on the device, which adds its own fling; a
+    mouse wheel is a mouse wheel there too.
+  - The remote's buttons and the keys go the same way, without the wait.
+  - How: `adb shell input` starts a program on the device for every command, which takes a
+    good part of a second. Sideboard now starts one program once and talks to it over a
+    socket: the device-side server of [scrcpy](https://github.com/Genymobile/scrcpy)
+    (Apache License 2.0), bundled unchanged, running with video and audio off. It is copied
+    to the device's temporary folder while a live screen is open and removed again; it turns
+    on no setting and doesn't wake the device. Android 5 or later.
+  - Where it can't run, the live screen works as before.
+- `--touch-check` tests the touch messages; with an emulator's adb name it also drags a real
+  list and checks that nothing stays behind.
+
 ## 0.6.1 — 2026-10-09
 
 - **Deep sleep** on the Details page (Power and standby): how long the device has been in deep

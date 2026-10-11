@@ -18,7 +18,7 @@ history, app names and icons, and typing in any language.
   <img src="docs/screenshots/overview-en-light.png" width="760" alt="Sideboard showing a TV's screen, app, playback, uptime, CPU, memory, storage, network, volume and its last 24 hours">
 </p>
 
-> **Status: early preview (0.6).** Shows your devices' screens live, watches them from the menu
+> **Status: early preview (0.7).** Shows your devices' screens live, watches them from the menu
 > bar with notifications, keeps their history on your Mac, gives them a health checkup, manages
 > apps and files, cleans up, and types in any language with the optional companion app.
 
@@ -135,8 +135,13 @@ its history.
 ## What it does (only when you click)
 
 - **Live screen**: the device's screen in a window on your Mac, streamed by Android's own
-  `screenrecord` straight over adb, so nothing is installed or written on the device. Click to
-  tap, drag to swipe, scroll, right-click for Back; arrow keys, Return and Esc work as the D-pad.
+  `screenrecord` straight over adb, so nothing is installed on the device. The mouse is a
+  finger: press, drag and let go, and the device follows as it happens — lists scroll under
+  the mouse and fling, sliders drag, a long press is a long press. Two fingers on the trackpad
+  or the wheel scroll, right-click is Back; arrow keys, Return and Esc work as the D-pad.
+  (Touches are passed on by the device-side server of
+  [scrcpy](https://github.com/Genymobile/scrcpy), kept in the device's temporary folder while
+  the window is open and removed again.)
   A new picture comes whenever something on screen changes, usually within a fraction of a
   second. There's no sound, and HDMI inputs and protected video show black.
 - **Remote**: D-pad, OK, Back, Home, volume, play/pause, sleep and wake. Arrow keys,
@@ -162,8 +167,9 @@ its history.
   screen is off, it checks once a minute whether it came back on, so the device can rest.
   With the window closed, it reads nothing.
 - The Details page samples processes only while it's open.
-- The live screen streams only while its window can be seen, and the recorder on the device
-  ends as soon as the window closes.
+- The live screen streams only while its window can be seen, and the recorder and the touch
+  server on the device end as soon as the window closes. Neither changes a setting or wakes
+  the device.
 - Network devices are reconnected once a minute when they're off the network, which
   doesn't wake them.
 - Nothing leaves your Mac: no accounts, no analytics. Screenshots in this README use
@@ -242,7 +248,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 - [x] Files and cleanup (0.2)
 - [x] Menu bar mode and notifications, history on the Mac, health checkup (0.4)
 - [x] Screen recording (0.5)
-- [x] Live screen view (0.6)
+- [x] Live screen view (0.6), with the mouse as a finger (0.7)
 - [ ] Update reminders for open-source apps; export an app list to set up a new device
 
 ## Support Sideboard
@@ -263,3 +269,7 @@ Bugs and ideas: [open an issue](../../issues). Email: zhaoweijia1997@gmail.com
 ## License
 
 [MIT](LICENSE)
+
+The app includes, unchanged, the device-side server of [scrcpy](https://github.com/Genymobile/scrcpy)
+(© Genymobile and Romain Vimont, [Apache License 2.0](Resources/scrcpy-LICENSE.txt)), which
+passes touches on to the device in the live screen.

@@ -8,7 +8,7 @@ import UserNotifications
 enum Main {
     static func main() {
         let arguments = CommandLine.arguments
-        guard ["--status", "--watch", "--check", "--snapshot"].contains(where: arguments.contains) else {
+        guard ["--status", "--watch", "--check", "--snapshot", "--touch-check"].contains(where: arguments.contains) else {
             SideboardApp.main()
             return
         }
@@ -33,6 +33,14 @@ enum Main {
         } else if arguments.contains("--check") {
             Task { @MainActor in
                 await StatusReport.check()
+                exit(0)
+            }
+        // --touch-check [serial]: the live screen's touch messages; with a device's adb name, also a
+        // real drag on that device (meant for an emulator).
+        } else if let flag = arguments.firstIndex(of: "--touch-check") {
+            let serial = arguments.dropFirst(flag + 1).first
+            Task {
+                await TouchLinkCheck.run(serial: serial)
                 exit(0)
             }
         } else if let flag = arguments.firstIndex(of: "--snapshot") {

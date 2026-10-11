@@ -3,9 +3,10 @@ import AppKit
 import Observation
 import SwiftUI
 
-/// A device's screen, live, in a window of its own. Clicks become touches and keys become remote
-/// buttons (`adb shell input`). Streams only while the window can be seen, and nothing is
-/// installed or left on the device. HDMI inputs and protected video show black, as in screenshots.
+/// A device's screen, live, in a window of its own. The mouse is a finger on the device and keys
+/// are remote buttons, sent as they happen (`TouchLink`); where that can't run, a click or drag is
+/// sent when it ends (`adb shell input`). Streams only while the window can be seen, and nothing
+/// is installed or left on the device. HDMI inputs and protected video show black, as in screenshots.
 @MainActor @Observable
 final class LiveScreen {
     enum State: Equatable {
@@ -27,6 +28,8 @@ final class LiveScreen {
     let serial: String
     private let adb: Adb?
     private var stream: LiveStream?
+    /// Touches as they happen; without it (not connected yet, or the device can't) they go by `input`.
+    private var link: TouchLink?
     private var running = false
     private var visible = true
     /// The screen in the device's own coordinates, which touches use: a TV may draw at 1920 × 1080
@@ -101,6 +104,9 @@ final class LiveScreen {
         }
         self.stream = stream
         stream.start()
+        let link = TouchLink(adb: adb, serial: serial)
+        self.link = link
+        Task { _ = await link.start() }
         waiting?.cancel()
         waiting = Task { [weak self] in
             try? await Task.sleep(for: .seconds(4))
@@ -111,6 +117,8 @@ final class LiveScreen {
     private func suspend() {
         stream?.stop()
         stream = nil
+        link?.stop()
+        link = nil
         waiting?.cancel()
     }
 
@@ -168,7 +176,32 @@ final class LiveScreen {
     }
 
     func press(_ key: RemoteKey) {
-        send("input keyevent \(key.rawValue)")
+        if let link, link.isReady {
+            link.press(key.rawValue)
+        } else {
+            send("input keyevent \(key.rawValue)")
+        }
+    }
+
+    /// True when touches reach the device as they happen, so a drag can follow the mouse.
+    var followsFinger: Bool { link?.isReady ?? false }
+
+    /// A finger going down, moving or lifting at `point` (fractions of the picture, as for `tap`).
+    func touch(_ action: TouchLink.Touch, at point: CGPoint) {
+        guard let link, let screen = deviceScreen else { return }
+        let (x, y) = devicePoint(point)
+        link.touch(action, x: x, y: y, screen: screen)
+    }
+
+    /// A mouse wheel turned over `point`, in wheel clicks: positive is up, and to the right.
+    func scroll(at point: CGPoint, horizontal: Double, vertical: Double) {
+        guard let link, let screen = deviceScreen else { return }
+        let (x, y) = devicePoint(point)
+        link.scroll(x: x, y: y, screen: screen, horizontal: horizontal, vertical: vertical)
+    }
+
+    private var deviceScreen: (width: Int, height: Int)? {
+        (screenSize ?? videoSize).map { (Int($0.width), Int($0.height)) }
     }
 
     func wake() {
@@ -362,6 +395,10 @@ final class LiveScreenNSView: NSView {
     }
     private var fitted = false
     private var down: (point: NSPoint, time: TimeInterval)?
+    /// The mouse button is down as a finger on the device.
+    private var touching = false
+    /// Where the finger of a trackpad scroll is, in the view.
+    private var scrollFinger: NSPoint?
     private var scrolled: CGFloat = 0
     private var scrollStart: CGPoint?
     private var scrollWork: DispatchWorkItem?
@@ -446,10 +483,26 @@ final class LiveScreenNSView: NSView {
 
     override func mouseDown(with event: NSEvent) {
         window?.makeFirstResponder(self)
-        down = (convert(event.locationInWindow, from: nil), event.timestamp)
+        let point = convert(event.locationInWindow, from: nil)
+        if live.followsFinger, scrollFinger == nil, let start = fraction(point) {
+            touching = true
+            live.touch(.down, at: start)
+        } else {
+            down = (point, event.timestamp)
+        }
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard touching, let point = fraction(convert(event.locationInWindow, from: nil), clamped: true) else { return }
+        live.touch(.move, at: point)
     }
 
     override func mouseUp(with event: NSEvent) {
+        if touching {
+            touching = false
+            if let point = fraction(convert(event.locationInWindow, from: nil), clamped: true) { live.touch(.up, at: point) }
+            return
+        }
         guard let down, let start = fraction(down.point) else { return }
         self.down = nil
         let point = convert(event.locationInWindow, from: nil)
@@ -469,10 +522,22 @@ final class LiveScreenNSView: NSView {
         live.press(.back)
     }
 
-    /// Scrolling becomes one swipe when it pauses: `input` can't stream a gesture.
+    /// With touches going out as they happen, two fingers on the trackpad are one finger dragging
+    /// on the device (which adds its own fling when they lift), and a mouse wheel is a mouse wheel
+    /// there too. Otherwise scrolling becomes one swipe when it pauses: `input` can't stream a gesture.
     override func scrollWheel(with event: NSEvent) {
         guard event.momentumPhase.isEmpty else { return }
         let point = convert(event.locationInWindow, from: nil)
+        if live.followsFinger || scrollFinger != nil {
+            if !event.phase.isEmpty {
+                trackpadScroll(event, at: point)
+            } else if let at = fraction(point) {
+                // A wheel that scrolls by the point sends many small steps for one click.
+                let clicks = event.hasPreciseScrollingDeltas ? 1.0 / 40 : 1
+                live.scroll(at: at, horizontal: -event.scrollingDeltaX * clicks, vertical: event.scrollingDeltaY * clicks)
+            }
+            return
+        }
         guard let start = scrollStart ?? fraction(point) else { return }
         scrollStart = start
         scrolled += event.scrollingDeltaY * (event.hasPreciseScrollingDeltas ? 1 : 12)
@@ -480,6 +545,20 @@ final class LiveScreenNSView: NSView {
         let work = DispatchWorkItem { [weak self] in self?.finishScroll() }
         scrollWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: work)
+    }
+
+    private func trackpadScroll(_ event: NSEvent, at point: NSPoint) {
+        if event.phase.contains(.began), !touching, let start = fraction(point) {
+            scrollFinger = point
+            live.touch(.down, at: start)
+        } else if var finger = scrollFinger {
+            // Content follows the fingers, as on the trackpad; the view's y grows upward.
+            finger.x += event.scrollingDeltaX
+            finger.y -= event.scrollingDeltaY
+            let lifted = !event.phase.isDisjoint(with: [.ended, .cancelled])
+            scrollFinger = lifted ? nil : finger
+            if let at = fraction(finger, clamped: true) { live.touch(lifted ? .up : .move, at: at) }
+        }
     }
 
     private func finishScroll() {
