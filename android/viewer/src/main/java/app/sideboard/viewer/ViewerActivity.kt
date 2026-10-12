@@ -49,6 +49,12 @@ class ViewerActivity : Activity(), SurfaceHolder.Callback {
     @Volatile private var control: OutputStream? = null
     private var videoWidth = 0
     private var videoHeight = 0
+    /** The other device's app understands "a tap" as one message (Link 0.4 and later). */
+    @Volatile private var tapsWhole = false
+    /** A finger that just went down and hasn't been reported yet: it may still turn out to be a tap. */
+    private var heldBack: FloatArray? = null
+    private val main = Handler(android.os.Looper.getMainLooper())
+    private val report = Runnable { reportDown() }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -294,6 +300,13 @@ class ViewerActivity : Activity(), SurfaceHolder.Callback {
     private fun keepControl() {
         while (running) {
             try {
+                tapsWhole = runCatching {
+                    val info = client.open("info")
+                    val version = Regex("\"version\":\"([0-9.]+)\"").find(info.line)?.groupValues?.get(1).orEmpty()
+                    runCatching { info.socket.close() }
+                    val parts = version.split('.').map { it.toIntOrNull() ?: 0 }
+                    parts.getOrElse(0) { 0 } > 0 || parts.getOrElse(1) { 0 } >= 4
+                }.getOrDefault(false)
                 val open = client.open("control")
                 controlSocket = open.socket
                 control = open.output
@@ -331,10 +344,55 @@ class ViewerActivity : Activity(), SurfaceHolder.Callback {
         }
         val x = (event.x / view.width).coerceIn(0f, 1f)
         val y = (event.y / view.height).coerceIn(0f, 1f)
+        if (!tapsWhole) {
+            point(kind, x, y)
+            return true
+        }
+        // "Down" and "up" as two messages make a long press out of a tap whenever the network
+        // dawdles between them. So a finger going down is held back for a moment: lifted again
+        // quickly without having moved, it goes out as one "tap", which the other device times
+        // itself; otherwise it is reported as down after all, and what follows as it happens.
+        when (kind) {
+            0 -> {
+                heldBack = floatArrayOf(x, y, event.x, event.y)
+                main.removeCallbacks(report)
+                main.postDelayed(report, HOLD)
+            }
+            1 -> {
+                val held = heldBack
+                if (held != null) {
+                    val slop = resources.displayMetrics.density * 10
+                    if (Math.hypot((event.x - held[2]).toDouble(), (event.y - held[3]).toDouble()) < slop) return true
+                    reportDown()
+                }
+                point(1, x, y)
+            }
+            else -> {
+                val held = heldBack
+                if (held != null) {
+                    main.removeCallbacks(report)
+                    heldBack = null
+                    point(6, held[0], held[1])
+                } else {
+                    point(2, x, y)
+                }
+            }
+        }
+        return true
+    }
+
+    /** The finger held back is a press or a drag after all. */
+    private fun reportDown() {
+        val held = heldBack ?: return
+        main.removeCallbacks(report)
+        heldBack = null
+        point(0, held[0], held[1])
+    }
+
+    private fun point(kind: Int, x: Float, y: Float) {
         val across = (x * 65535).toInt()
         val down = (y * 65535).toInt()
         sendControl(byteArrayOf(kind.toByte(), (across shr 8).toByte(), across.toByte(), (down shr 8).toByte(), down.toByte()))
-        return true
     }
 
     private fun askText() {
@@ -373,6 +431,8 @@ class ViewerActivity : Activity(), SurfaceHolder.Callback {
 
     companion object {
         private const val TAG = "SideboardViewer"
+        /** Milliseconds a finger may stay down and still be a tap. */
+        private const val HOLD = 180L
         /** Milliseconds without anything arriving after which the stream counts as quiet. */
         private const val QUIET = 25
         const val HOST = "host"

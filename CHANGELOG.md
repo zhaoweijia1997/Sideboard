@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.8.3 — 2026-10-12
+
+Sideboard Link 0.4 and Sideboard Viewer 0.3 come with it.
+
+- **A tap stays a tap.** A click used to travel as two messages, "finger down" and "finger
+  up", and the device held the finger down until the second arrived: whenever the network
+  dawdled in between, a tap became a long press. Now the Mac and the Viewer wait a moment to
+  see what a touch is, and a quick one goes out as a single "tap" that the device times
+  itself. Holding still for longer is a long press as before, and moving is a drag.
+  (With Link 0.3 or older on the device, touches go as they did.)
+
 ## 0.8.2 — 2026-10-12
 
 Sideboard Link 0.3 comes with it.

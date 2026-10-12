@@ -179,7 +179,10 @@ final class LiveScreen {
     private(set) var linkUpdating = false
 
     private func checkLinkVersion(_ endpoint: NWEndpoint) async {
-        guard let bundled = LinkSetup.bundledVersion, let installed = await LinkSetup.version(of: endpoint) else { return }
+        guard let installed = await LinkSetup.version(of: endpoint) else { return }
+        // From 0.4 the app takes a whole tap as one message, which keeps a click from turning into a long press.
+        linkTouch?.setTapsWhole(!LinkSetup.isNewer("0.4", than: installed))
+        guard let bundled = LinkSetup.bundledVersion else { return }
         linkUpdateAvailable = LinkSetup.isNewer(bundled, than: installed)
     }
 

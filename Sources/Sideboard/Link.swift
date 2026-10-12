@@ -379,9 +379,21 @@ final class LinkTouch: @unchecked Sendable {
     private var ready = false
     private var touchOn = false
     private var stopped = false
+    /** The device's app takes a whole tap as one message (Link 0.4 and later). */
+    private var tapsWhole = false
+    /** A finger that just went down and hasn't been sent yet: it may still turn out to be a tap. Used on `queue` only. */
+    private var heldBack: (x: Double, y: Double, mark: Int)?
+    private var marks = 0
+    /** Seconds a button may stay down and still be a tap. */
+    private static let hold = 0.18
 
     init(endpoint: NWEndpoint) {
         self.endpoint = endpoint
+    }
+
+    /** Told once the device's version is known. */
+    func setTapsWhole(_ whole: Bool) {
+        queue.async { self.tapsWhole = whole }
     }
 
     /// Connected, and the device's accessibility service is on, so touches do something.
@@ -427,14 +439,57 @@ final class LinkTouch: @unchecked Sendable {
     }
 
     /// `x` and `y` are fractions of the screen, from its top left corner.
+    ///
+    /// "Down" and "up" as two messages make a long press out of a click whenever the network
+    /// dawdles between them. So a finger going down is held back for a moment: lifted again
+    /// quickly without having moved, it goes out as one "tap", which the device times itself;
+    /// otherwise it is sent as down after all, and what follows as it happens.
     func touch(_ action: TouchLink.Touch, x: Double, y: Double) {
-        // The app's own numbers, which are not the adb touch link's.
-        let kind: UInt8 = switch action {
-        case .down: 0
-        case .move: 1
-        case .up: 2
+        queue.async { [self] in
+            guard tapsWhole else {
+                // The app's own numbers, which are not the adb touch link's.
+                let kind: UInt8 = switch action {
+                case .down: 0
+                case .move: 1
+                case .up: 2
+                }
+                return write(Data([kind]) + Self.spot(x, y))
+            }
+            switch action {
+            case .down:
+                marks += 1
+                let mark = marks
+                heldBack = (x, y, mark)
+                queue.asyncAfter(deadline: .now() + Self.hold) { [self] in
+                    if let held = heldBack, held.mark == mark { sendHeldDown() }
+                }
+            case .move:
+                if let held = heldBack {
+                    guard abs(x - held.x) > 0.012 || abs(y - held.y) > 0.012 else { return }
+                    sendHeldDown()
+                }
+                write(Data([1]) + Self.spot(x, y))
+            case .up:
+                if let held = heldBack {
+                    heldBack = nil
+                    write(Data([6]) + Self.spot(held.x, held.y))
+                } else {
+                    write(Data([2]) + Self.spot(x, y))
+                }
+            }
         }
-        send(Data([kind]) + Self.spot(x, y))
+    }
+
+    private func sendHeldDown() {
+        guard let held = heldBack else { return }
+        heldBack = nil
+        write(Data([0]) + Self.spot(held.x, held.y))
+    }
+
+    /// On `queue`.
+    private func write(_ message: Data) {
+        guard lock.withLock({ ready }) else { return }
+        channel?.send(message)
     }
 
     /// A wheel turn over a point, in wheel clicks: positive is up, and to the right.

@@ -5,6 +5,7 @@ without the Mac app:
     tools/link_client.py HOST[:PORT] info
     tools/link_client.py HOST[:PORT] video SECONDS FILE.h264 [LONGEST_SIDE]
     tools/link_client.py HOST[:PORT] tap X Y            (0…1 across and down the screen)
+    tools/link_client.py HOST[:PORT] press X Y [SECONDS]   (a long press)
     tools/link_client.py HOST[:PORT] swipe X1 Y1 X2 Y2
     tools/link_client.py HOST[:PORT] scroll X Y ACROSS DOWN   (fractions of the screen; DOWN 0.3 shows what is further down)
     tools/link_client.py HOST[:PORT] key back|home|recents|notifications|quick|lock|wake
@@ -96,8 +97,12 @@ def main():
         sock = connect(target, "control")
         print(line(sock))
         if what == "tap":
+            # one message; the device times the tap itself (Link 0.4 and later)
+            sock.sendall(b"\x06" + spot(*rest[:2]))
+        elif what == "press":
+            # down and up as two messages, SECONDS apart: a long press, or what a slow network makes of a tap
             sock.sendall(b"\x00" + spot(*rest[:2]))
-            time.sleep(0.06)
+            time.sleep(float(rest[2]) if len(rest) > 2 else 0.8)
             sock.sendall(b"\x02" + spot(*rest[:2]))
         elif what == "swipe":
             x1, y1, x2, y2 = map(float, rest[:4])

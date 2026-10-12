@@ -20,6 +20,8 @@ import java.io.InputStream
  *     3 a key:  one byte (0 Back, 1 Home, 2 Recents, 3 notifications, 4 quick settings, 5 lock the screen, 6 wake the screen)
  *     4 text:   its length in bytes (two bytes), then UTF-8; "\n" is Return and "\u0008" deletes backwards
  *     5 scroll: x, y, then how far across and down (two signed bytes each, same scale as x and y)
+ *     6 a tap:  x, y. Down and up in one, done here, so that it is a tap however long the
+ *               network took between the two (since 0.4)
  *
  * A drag is one gesture that keeps being continued, so the finger follows the mouse while it
  * moves. Android runs one piece of a gesture at a time; moves that arrive meanwhile are joined
@@ -83,6 +85,17 @@ class TouchService : AccessibilityService() {
         downAt = PointF(at.x, at.y)
         val made = GestureDescription.StrokeDescription(Path().apply { moveTo(at.x, at.y) }, 0, PIECE, true)
         send(made)
+    }
+
+    /** A whole tap, timed on this device. */
+    private fun tap(at: PointF) {
+        stroke = null
+        nextMove = null
+        lift = false
+        last = at
+        downAt = PointF(at.x, at.y)
+        pressLockScreenKey()
+        dispatch(GestureDescription.StrokeDescription(Path().apply { moveTo(at.x, at.y) }, 0, TAP))
     }
 
     private fun move(to: PointF) {
@@ -239,6 +252,8 @@ class TouchService : AccessibilityService() {
     companion object {
         /** How long one piece of a drag takes, in milliseconds: short enough to follow the mouse. */
         private const val PIECE = 24L
+        /** How long a tap's finger stays down. */
+        private const val TAP = 50L
         /** The button's words where it has no usual name, newest first. */
         private val START_WORDS = listOf("Share screen", "Start now", "Start", "共享屏幕", "立即开始", "开始")
 
@@ -253,6 +268,7 @@ class TouchService : AccessibilityService() {
                 if (kind < 0) return
                 // A finger going down, a key or text: the screen comes on if it was off or locked.
                 if (kind != 1 && kind != 2) LinkService.instance?.touched()
+
                 when (kind) {
                     0, 1, 2 -> {
                         val x = data.readUnsignedShort()
@@ -268,6 +284,11 @@ class TouchService : AccessibilityService() {
                         val bytes = ByteArray(data.readUnsignedShort())
                         data.readFully(bytes)
                         run { it.type(String(bytes)) }
+                    }
+                    6 -> {
+                        val x = data.readUnsignedShort()
+                        val y = data.readUnsignedShort()
+                        run { it.tap(it.point(x, y)) }
                     }
                     5 -> {
                         val x = data.readUnsignedShort()
