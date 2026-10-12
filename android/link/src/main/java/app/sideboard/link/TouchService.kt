@@ -20,25 +20,42 @@ import java.io.InputStream
  *     3 a key:  one byte (0 Back, 1 Home, 2 Recents, 3 notifications, 4 quick settings, 5 lock the screen, 6 wake the screen)
  *     4 text:   its length in bytes (two bytes), then UTF-8; "\n" is Return and "\u0008" deletes backwards
  *     5 scroll: x, y, then how far across and down (two signed bytes each, same scale as x and y)
+ *     8, 9, 10 a second finger down, moved, up: x, y. For pinching (since 0.5)
  *     6 a tap:  x, y. Down and up in one, done here, so that it is a tap however long the
  *               network took between the two (since 0.4)
  *
  * A drag is one gesture that keeps being continued, so the finger follows the mouse while it
  * moves. Android runs one piece of a gesture at a time; moves that arrive meanwhile are joined
- * into the next piece.
+ * into the next piece. With a second finger down, each piece carries both.
+ *
+ * Several can be connected at once. Whoever puts a finger down first has the screen until it
+ * lifts; the others' touches are left out meanwhile. Keys and text are taken from anybody.
  *
  * It also answers Android's "start capturing the screen?" when that was asked on the Mac's
  * behalf ([ScreenCast.asking]), so the device needn't be touched.
  */
 class TouchService : AccessibilityService() {
     private val main = Handler(Looper.getMainLooper())
-    private var stroke: GestureDescription.StrokeDescription? = null
-    private var last = PointF()
+    /** A finger held on the screen for somebody far away. */
+    private class Finger(var last: PointF) {
+        /** The piece of its gesture sent last; null before the first. */
+        var stroke: GestureDescription.StrokeDescription? = null
+        var next: PointF? = null
+        var lift = false
+    }
+
+    /** Two at most: one to tap and drag, a second one to pinch. */
+    private val fingers = arrayOfNulls<Finger>(2)
     private var busy = false
-    private var nextMove: PointF? = null
-    private var lift = false
-    /** Where the finger went down, to tell a tap from a drag when it lifts. */
+    /** Goes up whenever the gesture is begun afresh, so that what Android says about the one before is ignored. */
+    private var round = 0
+    /** A second finger arrived during a piece: begin afresh with both as soon as that piece has run. */
+    private var afresh = false
+    /** Where the first finger went down and where it is. */
     private var downAt = PointF()
+    private var last = PointF()
+    /** The lock-screen key the first finger went down on, to be pressed when it lifts. */
+    private var padKey: AccessibilityNodeInfo? = null
 
     override fun onServiceConnected() {
         instance = this
@@ -77,54 +94,93 @@ class TouchService : AccessibilityService() {
         return PointF((x / 65535f * size.x).coerceIn(0f, size.x - 1f), (y / 65535f * size.y).coerceIn(0f, size.y - 1f))
     }
 
-    private fun down(at: PointF) {
-        stroke = null
-        nextMove = null
-        lift = false
-        last = at
-        downAt = PointF(at.x, at.y)
-        val made = GestureDescription.StrokeDescription(Path().apply { moveTo(at.x, at.y) }, 0, PIECE, true)
-        send(made)
+    private fun down(id: Int, at: PointF) {
+        if (id == 0) {
+            downAt = PointF(at.x, at.y)
+            last = at
+            // On a key of the lock screen's pad no finger is put down at all: the key is
+            // pressed directly when the finger lifts (see [padKeyAt]).
+            padKey = padKeyAt(at)
+            if (padKey != null) {
+                fingers.fill(null)
+                return
+            }
+        }
+        val other = fingers[1 - id]
+        fingers[id] = Finger(at)
+        if (other != null && other.stroke != null) {
+            // Android won't add a finger to a gesture that is under way. So the gesture begins
+            // again with both where they are; the one before is called off, not lifted, and so
+            // doesn't count as a tap. Not in the middle of a piece, though: beginning afresh
+            // while one is still running gets the new gesture called off as well, more often
+            // than not. Then it waits for that piece to end, a few milliseconds.
+            if (busy) afresh = true else beginAfresh()
+        }
+        pump()
+    }
+
+    /** Every finger held starts a new gesture where it is. */
+    private fun beginAfresh() {
+        afresh = false
+        for (finger in fingers) {
+            finger?.stroke = null
+            finger?.lift = false
+        }
+        round++
+        busy = false
     }
 
     /** A whole tap, timed on this device. */
     private fun tap(at: PointF) {
-        stroke = null
-        nextMove = null
-        lift = false
+        fingers.fill(null)
+        round++
         last = at
         downAt = PointF(at.x, at.y)
-        pressLockScreenKey()
-        dispatch(GestureDescription.StrokeDescription(Path().apply { moveTo(at.x, at.y) }, 0, TAP))
+        padKey = null
+        val key = padKeyAt(at)
+        if (key != null) {
+            key.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+            return
+        }
+        dispatch(GestureDescription.Builder().addStroke(GestureDescription.StrokeDescription(Path().apply { moveTo(at.x, at.y) }, 0, TAP)).build())
     }
 
-    private fun move(to: PointF) {
-        if (stroke == null && !busy) return
-        nextMove = to
+    private fun move(id: Int, to: PointF) {
+        val finger = fingers[id] ?: return
+        finger.next = to
+        if (id == 0) last = to
         pump()
     }
 
-    private fun up() {
-        pressLockScreenKey()
-        if (stroke == null && !busy) return
-        lift = true
+    private fun up(id: Int) {
+        if (id == 0) {
+            val key = padKey
+            padKey = null
+            if (key != null) {
+                key.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                return
+            }
+        }
+        val finger = fingers[id] ?: return
+        finger.lift = true
+        // Two fingers end together: the one left behind would otherwise jump about as a lone finger.
+        fingers[1 - id]?.lift = true
         pump()
     }
 
     /**
-     * The lock screen's PIN pad takes no notice of gestures made for somebody else, only of real
-     * fingers. So a tap that lands on one of its keys presses that key directly, the way a
-     * screen reader does for its user.
+     * The key of the lock screen's PIN pad at [at], if the device is locked and there is one.
+     * The pad is unreliable with gestures made for somebody else (short ones it ignores, longer
+     * ones it takes), so its keys are pressed directly, the way a screen reader does for its
+     * user, and never touched as well: one press, one digit.
      */
-    private fun pressLockScreenKey() {
-        val moved = Math.hypot((last.x - downAt.x).toDouble(), (last.y - downAt.y).toDouble())
-        if (moved > resources.displayMetrics.density * 16) return
-        if (!getSystemService(android.app.KeyguardManager::class.java).isKeyguardLocked) return
-        val root = rootInActiveWindow ?: return
+    private fun padKeyAt(at: PointF): AccessibilityNodeInfo? {
+        if (!getSystemService(android.app.KeyguardManager::class.java).isKeyguardLocked) return null
+        val root = rootInActiveWindow ?: return null
         val bounds = android.graphics.Rect()
         fun keyAt(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
             node.getBoundsInScreen(bounds)
-            if (!bounds.contains(downAt.x.toInt(), downAt.y.toInt())) return null
+            if (!bounds.contains(at.x.toInt(), at.y.toInt())) return null
             for (index in 0 until node.childCount) {
                 val child = node.getChild(index) ?: continue
                 keyAt(child)?.let { return it }
@@ -133,61 +189,70 @@ class TouchService : AccessibilityService() {
             val isKey = name.startsWith("com.android.systemui:id/key") || name == "com.android.systemui:id/delete_button"
             return node.takeIf { isKey && it.isClickable }
         }
-        keyAt(root)?.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+        return keyAt(root)
     }
 
-    /** Sends the next piece once the one before has run. */
+    /**
+     * Sends the next piece once the one before has run: one gesture that carries every finger
+     * on the screen on, whether it moved or not, so that none of them is let go by accident.
+     */
     private fun pump() {
         if (busy) return
-        val current = stroke ?: return
-        val to = nextMove
-        if (to != null) {
-            nextMove = null
-            val path = Path().apply { moveTo(last.x, last.y); lineTo(to.x, to.y) }
-            last = to
-            send(current.continueStroke(path, 0, PIECE, true))
-        } else if (lift) {
-            lift = false
-            val path = Path().apply { moveTo(last.x, last.y) }
-            stroke = null
-            dispatch(current.continueStroke(path, 0, 1, false))
+        val held = fingers.filterNotNull()
+        if (held.none { it.stroke == null || it.next != null || it.lift }) return
+        val gesture = GestureDescription.Builder()
+        for (finger in held) {
+            val to = finger.next
+            finger.next = null
+            val path = Path().apply {
+                moveTo(finger.last.x, finger.last.y)
+                if (to != null) lineTo(to.x, to.y)
+            }
+            if (to != null) finger.last = to
+            val current = finger.stroke
+            // A finger that still has somewhere to go gets there first and lifts in the next piece.
+            val lifting = current != null && finger.lift && to == null
+            val piece = current?.continueStroke(path, 0, if (lifting) 1 else PIECE, !lifting)
+                ?: GestureDescription.StrokeDescription(path, 0, PIECE, true)
+            finger.stroke = piece
+            if (lifting) fingers[fingers.indexOf(finger)] = null
+            gesture.addStroke(piece)
         }
+        dispatch(gesture.build())
     }
 
-    private fun send(piece: GestureDescription.StrokeDescription) {
-        stroke = piece
-        dispatch(piece)
-    }
-
-    private fun dispatch(piece: GestureDescription.StrokeDescription) {
+    private fun dispatch(gesture: GestureDescription) {
         busy = true
-        val accepted = dispatchGesture(GestureDescription.Builder().addStroke(piece).build(), object : GestureResultCallback() {
+        val mine = round
+        val accepted = dispatchGesture(gesture, object : GestureResultCallback() {
             override fun onCompleted(gesture: GestureDescription) {
+                if (mine != round) return
                 busy = false
+                if (afresh) beginAfresh()
                 pump()
             }
 
             override fun onCancelled(gesture: GestureDescription) {
+                if (mine != round) return
                 busy = false
-                stroke = null
-                nextMove = null
-                lift = false
+                afresh = false
+                fingers.fill(null)
             }
         }, main)
         if (!accepted) {
             busy = false
-            stroke = null
+            fingers.fill(null)
         }
     }
 
     /** A wheel turn: a short swipe the other way, as a finger would do it. */
     private fun scroll(at: PointF, across: Float, downwards: Float) {
         // Not in the middle of a drag; anything else still running is over as far as the Mac is concerned.
-        if (stroke != null) return
+        if (fingers.any { it != null }) return
         val size = ScreenCast.screenSize(this)
         val end = PointF((at.x - across).coerceIn(0f, size.x - 1f), (at.y - downwards).coerceIn(0f, size.y - 1f))
         val path = Path().apply { moveTo(at.x, at.y); lineTo(end.x, end.y) }
-        dispatch(GestureDescription.StrokeDescription(path, 0, 120))
+        dispatch(GestureDescription.Builder().addStroke(GestureDescription.StrokeDescription(path, 0, 120)).build())
     }
 
     private fun key(which: Int) {
@@ -263,17 +328,23 @@ class TouchService : AccessibilityService() {
         /** Reads the Mac's messages until it hangs up. Messages still count when the service is off; they just do nothing. */
         fun listen(input: InputStream) {
             val data = DataInputStream(input)
+            // Each connection is somebody: a Mac, a phone. Whoever puts a finger down first has
+            // the screen until it lifts; touches from anybody else meanwhile are left out, so
+            // that two people don't tear one gesture apart between them.
+            val me = people.incrementAndGet()
             while (true) {
                 val kind = data.read()
                 if (kind < 0) return
                 // A finger going down, a key or text: the screen comes on if it was off or locked.
-                if (kind != 1 && kind != 2) LinkService.instance?.touched()
+                if (kind != 1 && kind != 2 && kind != 9 && kind != 10) LinkService.instance?.touched()
 
                 when (kind) {
                     0, 1, 2 -> {
                         val x = data.readUnsignedShort()
                         val y = data.readUnsignedShort()
-                        run { service -> val at = service.point(x, y); if (kind == 0) service.down(at) else if (kind == 1) service.move(at) else service.up() }
+                        if (!mayTouch(me, begins = kind == 0)) continue
+                        if (kind == 2) letGo(me)
+                        run { service -> val at = service.point(x, y); if (kind == 0) service.down(0, at) else if (kind == 1) service.move(0, at) else service.up(0) }
                     }
                     3 -> {
                         val which = data.read()
@@ -285,9 +356,17 @@ class TouchService : AccessibilityService() {
                         data.readFully(bytes)
                         run { it.type(String(bytes)) }
                     }
+                    8, 9, 10 -> {
+                        val x = data.readUnsignedShort()
+                        val y = data.readUnsignedShort()
+                        if (!mayTouch(me, begins = false)) continue
+                        run { service -> val at = service.point(x, y); if (kind == 8) service.down(1, at) else if (kind == 9) service.move(1, at) else service.up(1) }
+                    }
                     6 -> {
                         val x = data.readUnsignedShort()
                         val y = data.readUnsignedShort()
+                        if (!mayTouch(me, begins = true)) continue
+                        letGo(me)
                         run { it.tap(it.point(x, y)) }
                     }
                     5 -> {
@@ -295,6 +374,8 @@ class TouchService : AccessibilityService() {
                         val y = data.readUnsignedShort()
                         val across = data.readShort()
                         val downwards = data.readShort()
+                        if (!mayTouch(me, begins = true)) continue
+                        letGo(me)
                         run { service ->
                             val size = ScreenCast.screenSize(service)
                             service.scroll(service.point(x, y), across / 65535f * size.x, downwards / 65535f * size.y)
@@ -303,6 +384,27 @@ class TouchService : AccessibilityService() {
                     else -> return
                 }
             }
+        }
+
+        private val people = java.util.concurrent.atomic.AtomicInteger()
+        /** Who has a finger down, and when they last moved it: a hold that has gone quiet (a lost connection) runs out. */
+        private var holder = 0
+        private var heldAt = 0L
+
+        /** Whether [who] may touch now. With [begins], a free screen becomes theirs; without, only an ongoing hold of their own counts. */
+        @Synchronized
+        private fun mayTouch(who: Int, begins: Boolean): Boolean {
+            val now = System.currentTimeMillis()
+            if (holder != 0 && holder != who && now - heldAt > 3_000) holder = 0
+            if (holder == 0 && begins) holder = who
+            if (holder != who) return false
+            heldAt = now
+            return true
+        }
+
+        @Synchronized
+        private fun letGo(who: Int) {
+            if (holder == who) holder = 0
         }
 
         private fun run(action: (TouchService) -> Unit) {

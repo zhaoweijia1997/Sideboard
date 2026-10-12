@@ -174,6 +174,15 @@ final class LiveScreen {
         }
     }
 
+    /// The device takes a second finger (Link 0.5 and later), so pinching on the trackpad zooms there.
+    private(set) var pinches = false
+
+    /// Two fingers pinching around `point` (fractions of the picture), `gap` away from it each.
+    func pinch(_ phase: LinkTouch.PinchPhase, at point: CGPoint, gap: Double) {
+        guard pinches else { return }
+        linkTouch?.pinch(phase, x: min(max(point.x, 0), 1), y: min(max(point.y, 0), 1), gap: gap)
+    }
+
     /// A Link device whose app is older than the one Sideboard carries: it can be sent the newer one.
     private(set) var linkUpdateAvailable = false
     private(set) var linkUpdating = false
@@ -182,6 +191,7 @@ final class LiveScreen {
         guard let installed = await LinkSetup.version(of: endpoint) else { return }
         // From 0.4 the app takes a whole tap as one message, which keeps a click from turning into a long press.
         linkTouch?.setTapsWhole(!LinkSetup.isNewer("0.4", than: installed))
+        pinches = !LinkSetup.isNewer("0.5", than: installed)
         guard let bundled = LinkSetup.bundledVersion else { return }
         linkUpdateAvailable = LinkSetup.isNewer(bundled, than: installed)
     }
@@ -547,6 +557,9 @@ final class LiveScreenNSView: NSView {
     private var down: (point: NSPoint, time: TimeInterval)?
     /// The mouse button is down as a finger on the device.
     private var touching = false
+    /// A trackpad pinch under way: where it is centred, and how far each finger is from there.
+    private var pinchAt: CGPoint?
+    private var pinchGap = 0.14
     /// Where the finger of a trackpad scroll is, in the view.
     private var scrollFinger: NSPoint?
     private var scrolled: CGFloat = 0
@@ -665,6 +678,28 @@ final class LiveScreenNSView: NSView {
             }
         } else if let end = fraction(point, clamped: true) {
             live.swipe(from: start, to: end, duration: min(max(held, 0.1), 2))
+        }
+    }
+
+    /// Pinching on the trackpad: two fingers on the device, either side of the pointer, moving
+    /// apart or together as the pinch does.
+    override func magnify(with event: NSEvent) {
+        guard live.pinches, let at = fraction(convert(event.locationInWindow, from: nil), clamped: true) else { return }
+        switch event.phase {
+        case .began:
+            pinchGap = 0.14
+            pinchAt = at
+            live.pinch(.began, at: at, gap: pinchGap)
+        case .changed:
+            guard let pinchAt else { return }
+            pinchGap = min(max(pinchGap * (1 + event.magnification), 0.02), 0.45)
+            live.pinch(.changed, at: pinchAt, gap: pinchGap)
+        case .ended, .cancelled:
+            guard let center = pinchAt else { return }
+            live.pinch(.ended, at: center, gap: pinchGap)
+            pinchAt = nil
+        default:
+            break
         }
     }
 

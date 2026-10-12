@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.8.4 — 2026-10-12
+
+Sideboard Link 0.5 and Sideboard Viewer 0.4 come with it.
+
+- **Pinch to zoom.** Two fingers in the Viewer are two fingers on the device; on the Mac, a
+  pinch on the trackpad over the live screen does the same. (Android won't add a finger to a
+  gesture that is under way, so when the second one arrives the gesture begins again with
+  both.)
+- **A device can be seen after a restart, before anybody has unlocked it.** Setting Link up
+  from Sideboard now also allows the app to capture the screen without Android's question
+  each time it starts (`appops set … PROJECT_MEDIA allow`), and the request can be answered
+  in front of the lock screen. With wake, the picture and the PIN pad, a restarted device
+  needs nobody beside it. Click Set Up Again on the device's Overview page to give an
+  existing installation this.
+- **Two people don't tear one gesture apart.** With a Mac and a phone connected at once,
+  whoever puts a finger down first has the screen until it lifts; the other's touches are
+  left out meanwhile. Keys and text are taken from both.
+- On the lock screen's PIN pad a key is pressed once: directly, and no longer tapped as well
+  (0.8.3's timed tap reached the pad too, and digits were entered twice).
+
 ## 0.8.3 — 2026-10-12
 
 Sideboard Link 0.4 and Sideboard Viewer 0.3 come with it.

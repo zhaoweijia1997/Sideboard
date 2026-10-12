@@ -49,8 +49,12 @@ class ViewerActivity : Activity(), SurfaceHolder.Callback {
     @Volatile private var control: OutputStream? = null
     private var videoWidth = 0
     private var videoHeight = 0
-    /** The other device's app understands "a tap" as one message (Link 0.4 and later). */
+    /** The other device's app understands "a tap" as one message (Link 0.4 and later), and a second finger (0.5 and later). */
     @Volatile private var tapsWhole = false
+    @Volatile private var twoFingers = false
+    /** Which of this screen's pointers are the first and the second finger over there; -1 for none. */
+    private var first = -1
+    private var second = -1
     /** A finger that just went down and hasn't been reported yet: it may still turn out to be a tap. */
     private var heldBack: FloatArray? = null
     private val main = Handler(android.os.Looper.getMainLooper())
@@ -305,8 +309,12 @@ class ViewerActivity : Activity(), SurfaceHolder.Callback {
                     val version = Regex("\"version\":\"([0-9.]+)\"").find(info.line)?.groupValues?.get(1).orEmpty()
                     runCatching { info.socket.close() }
                     val parts = version.split('.').map { it.toIntOrNull() ?: 0 }
-                    parts.getOrElse(0) { 0 } > 0 || parts.getOrElse(1) { 0 } >= 4
+                    val major = parts.getOrElse(0) { 0 }
+                    val minor = parts.getOrElse(1) { 0 }
+                    twoFingers = major > 0 || minor >= 5
+                    major > 0 || minor >= 4
                 }.getOrDefault(false)
+                Log.i(TAG, "the other device takes whole taps: $tapsWhole, a second finger: $twoFingers")
                 val open = client.open("control")
                 controlSocket = open.socket
                 control = open.output
@@ -333,20 +341,56 @@ class ViewerActivity : Activity(), SurfaceHolder.Callback {
         }
     }
 
-    /** A finger on the picture: where it is, as fractions of the picture, to the other device. */
+    /**
+     * Fingers on the picture: where they are, as fractions of the picture, to the other device.
+     * The first finger taps and drags; a second one, where the other device takes it, pinches.
+     */
     private fun touched(view: View, event: MotionEvent): Boolean {
         if (view.width == 0 || view.height == 0) return false
-        val kind = when (event.actionMasked) {
-            MotionEvent.ACTION_DOWN -> 0
-            MotionEvent.ACTION_MOVE -> 1
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> 2
-            else -> return true
+        fun x(index: Int) = (event.getX(index) / view.width).coerceIn(0f, 1f)
+        fun y(index: Int) = (event.getY(index) / view.height).coerceIn(0f, 1f)
+        val index = event.actionIndex
+        val pointer = event.getPointerId(index)
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                first = pointer
+                second = -1
+                firstFinger(0, x(index), y(index), event.getX(index), event.getY(index))
+            }
+            MotionEvent.ACTION_POINTER_DOWN -> if (twoFingers && first >= 0 && second < 0) {
+                // Two fingers are no tap: the first one is reported as down now.
+                reportDown()
+                second = pointer
+                point(8, x(index), y(index))
+            }
+            MotionEvent.ACTION_MOVE -> for (each in 0 until event.pointerCount) {
+                when (event.getPointerId(each)) {
+                    first -> firstFinger(1, x(each), y(each), event.getX(each), event.getY(each))
+                    second -> point(9, x(each), y(each))
+                }
+            }
+            MotionEvent.ACTION_POINTER_UP, MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> when (pointer) {
+                first -> {
+                    firstFinger(2, x(index), y(index), event.getX(index), event.getY(index))
+                    first = -1
+                    // The other device lifts both together.
+                    second = -1
+                }
+                second -> {
+                    point(10, x(index), y(index))
+                    second = -1
+                    first = -1
+                }
+            }
         }
-        val x = (event.x / view.width).coerceIn(0f, 1f)
-        val y = (event.y / view.height).coerceIn(0f, 1f)
+        return true
+    }
+
+    /** The first finger going down (0), moving (1) or lifting (2); [rawX] and [rawY] are where it is on this screen, to tell whether it moved. */
+    private fun firstFinger(kind: Int, x: Float, y: Float, rawX: Float, rawY: Float) {
         if (!tapsWhole) {
             point(kind, x, y)
-            return true
+            return
         }
         // "Down" and "up" as two messages make a long press out of a tap whenever the network
         // dawdles between them. So a finger going down is held back for a moment: lifted again
@@ -354,7 +398,7 @@ class ViewerActivity : Activity(), SurfaceHolder.Callback {
         // itself; otherwise it is reported as down after all, and what follows as it happens.
         when (kind) {
             0 -> {
-                heldBack = floatArrayOf(x, y, event.x, event.y)
+                heldBack = floatArrayOf(x, y, rawX, rawY)
                 main.removeCallbacks(report)
                 main.postDelayed(report, HOLD)
             }
@@ -362,7 +406,7 @@ class ViewerActivity : Activity(), SurfaceHolder.Callback {
                 val held = heldBack
                 if (held != null) {
                     val slop = resources.displayMetrics.density * 10
-                    if (Math.hypot((event.x - held[2]).toDouble(), (event.y - held[3]).toDouble()) < slop) return true
+                    if (Math.hypot((rawX - held[2]).toDouble(), (rawY - held[3]).toDouble()) < slop) return
                     reportDown()
                 }
                 point(1, x, y)
@@ -378,7 +422,6 @@ class ViewerActivity : Activity(), SurfaceHolder.Callback {
                 }
             }
         }
-        return true
     }
 
     /** The finger held back is a press or a drag after all. */

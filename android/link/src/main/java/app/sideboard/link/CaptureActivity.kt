@@ -11,6 +11,11 @@ import android.os.Bundle
 class CaptureActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // In front of the lock screen too. Where the owner has had Sideboard allow capturing for
+        // good (set-up over adb does: `appops set … PROJECT_MEDIA allow`), Android answers this
+        // without showing anything, and that is what lets a device be seen that nobody has
+        // unlocked since it restarted. Without that allowance the question simply waits here.
+        if (Build.VERSION.SDK_INT >= 27) setShowWhenLocked(true)
         if (savedInstanceState != null) return
         val manager = getSystemService(MediaProjectionManager::class.java)
         // Newer Androids offer "one app" first; the Mac is after the whole screen.

@@ -396,6 +396,23 @@ final class LinkTouch: @unchecked Sendable {
         queue.async { self.tapsWhole = whole }
     }
 
+    enum PinchPhase { case began, changed, ended }
+
+    /// Two fingers either side of a point, `gap` (a fraction of the screen's width) away from it
+    /// each: put down, moved as the gap changes, and lifted. Link 0.5 and later.
+    func pinch(_ phase: PinchPhase, x: Double, y: Double, gap: Double) {
+        let kinds: (UInt8, UInt8) = switch phase {
+        case .began: (0, 8)
+        case .changed: (1, 9)
+        case .ended: (2, 10)
+        }
+        queue.async { [self] in
+            // A finger held back as a possible tap is no longer one.
+            if phase == .began { heldBack = nil }
+            write(Data([kinds.0]) + Self.spot(x - gap, y) + Data([kinds.1]) + Self.spot(x + gap, y))
+        }
+    }
+
     /// Connected, and the device's accessibility service is on, so touches do something.
     var isReady: Bool { lock.withLock { ready && touchOn } }
     /// Connected, but the service is off on the device.
@@ -561,6 +578,9 @@ enum LinkSetup {
         _ = await adb.shellOutput(serial, "pm grant \(package) android.permission.WRITE_SECURE_SETTINGS")
         _ = await adb.shellOutput(serial, "appops set \(package) REQUEST_INSTALL_PACKAGES allow")
         _ = await adb.shellOutput(serial, "dumpsys deviceidle whitelist +\(package)")
+        // Capturing the screen without the question each time the app starts. This is what lets
+        // the screen be seen after a restart, before anybody has unlocked the device.
+        _ = await adb.shellOutput(serial, "appops set \(package) PROJECT_MEDIA allow")
         // Android 13 and later ask before an app may show notifications; this one needs its own to keep running.
         _ = await adb.shellOutput(serial, "pm grant \(package) android.permission.POST_NOTIFICATIONS 2>/dev/null")
         let name = SideLink.macName.replacingOccurrences(of: "'", with: "")

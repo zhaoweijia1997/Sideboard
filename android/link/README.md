@@ -45,8 +45,10 @@ Link) while the device is still on adb.
 ## What to know
 
 - The connection is not encrypted. It is meant for a home network you trust.
-- After a restart, a device with a screen lock shows no picture until it is unlocked once:
-  Android doesn't show the capture question in front of the lock screen.
+- Android asks before an app captures the screen, each time the app starts. Set-up from
+  Sideboard switches that question off for this app (`appops set app.sideboard.link
+  PROJECT_MEDIA allow`), which is what makes a restarted, still locked device visible. Undo
+  it with `appops set app.sideboard.link PROJECT_MEDIA default`.
 - Looking at the screen through adb (`uiautomator dump`) switches every accessibility service
   off for a few seconds, this one included.
 

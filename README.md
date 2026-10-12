@@ -153,8 +153,8 @@ over your local network with no adb at all.
   and nothing else, and nothing leaves your network.
 - **It looks after itself**: it switches its accessibility service back on when Android has
   switched it off, and it can take its own updates from Sideboard over the network.
-- **Wake and lock from afar**, several viewers at once, and a picture whose quality follows
-  the network.
+- **Wake, unlock and lock from afar**, pinch to zoom, several viewers at once, and a picture
+  whose quality follows the network.
 
 There is a small Android app for the other side as well: **Sideboard Viewer** (`android/viewer`, an APK on the Releases page) shows a Link device's screen on another phone or tablet and takes your touches for it.
 
@@ -162,9 +162,9 @@ What to know:
 
 - Everything else in Sideboard (apps, files, health, history, screenshots) still goes by adb.
 - The connection isn't encrypted: use it on a network you trust.
-- After a restart, a device with a screen lock shows no picture until it has been unlocked
-  once (Android doesn't put the capture question in front of the lock screen); touches reach
-  it before that.
+- Set-up over adb lets the app capture the screen without Android's question each time it
+  starts. That is what makes a restarted, still locked device visible; it also means the app
+  can capture whenever an allowed Mac or Viewer asks. It still has no microphone or camera.
 - On recent Android versions the system's own “update this app?” has to be confirmed on the
   device; Google Play Protect may also ask whether to scan the app.
 - Android 8 or later. Tried on a Pixel XL (Android 10), a Pixel 3 XL (Android 12) and an

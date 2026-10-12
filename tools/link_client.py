@@ -7,6 +7,7 @@ without the Mac app:
     tools/link_client.py HOST[:PORT] tap X Y            (0…1 across and down the screen)
     tools/link_client.py HOST[:PORT] press X Y [SECONDS]   (a long press)
     tools/link_client.py HOST[:PORT] swipe X1 Y1 X2 Y2
+    tools/link_client.py HOST[:PORT] pinch X Y FACTOR [LATER]   (2 zooms in, 0.5 out; the second finger LATER seconds after the first)
     tools/link_client.py HOST[:PORT] scroll X Y ACROSS DOWN   (fractions of the screen; DOWN 0.3 shows what is further down)
     tools/link_client.py HOST[:PORT] key back|home|recents|notifications|quick|lock|wake
     tools/link_client.py HOST[:PORT] text "some words"
@@ -112,6 +113,21 @@ def main():
                 sock.sendall(b"\x01" + spot(x1 + (x2 - x1) * step / 20, y1 + (y2 - y1) * step / 20))
             time.sleep(0.05)
             sock.sendall(b"\x02" + spot(x2, y2))
+        elif what == "pinch":
+            # two fingers around X Y, moving apart (FACTOR above 1, zooming in) or together (below 1)
+            x, y, factor = float(rest[0]), float(rest[1]), float(rest[2])
+            start, end = (0.08, 0.08 * factor) if factor >= 1 else (0.08 / factor, 0.08)
+            # one finger first, the other a little later, as hands do (LATER seconds; 0 for both at once)
+            later = float(rest[3]) if len(rest) > 3 else 0
+            sock.sendall(b"\x00" + spot(x - start, y))
+            time.sleep(later)
+            sock.sendall(b"\x08" + spot(x + start, y))
+            for step in range(1, 21):
+                time.sleep(0.02)
+                gap = start + (end - start) * step / 20
+                sock.sendall(b"\x01" + spot(x - gap, y) + b"\x09" + spot(x + gap, y))
+            time.sleep(0.05)
+            sock.sendall(b"\x02" + spot(x - end, y) + b"\x0a" + spot(x + end, y))
         elif what == "scroll":
             # how far the page should move across and down, as fractions of the screen
             sock.sendall(b"\x05" + spot(*rest[:2]) + struct.pack(">hh", round(float(rest[2]) * 65535), round(float(rest[3]) * 65535)))
