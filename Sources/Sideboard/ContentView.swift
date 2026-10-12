@@ -57,6 +57,7 @@ struct ContentView: View {
                                 }
                             }
                     }
+                    LinkDevicesSection()
                 }
                 .padding(.horizontal, 8)
             }

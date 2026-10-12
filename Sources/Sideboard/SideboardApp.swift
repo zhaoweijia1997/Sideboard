@@ -8,7 +8,7 @@ import UserNotifications
 enum Main {
     static func main() {
         let arguments = CommandLine.arguments
-        guard ["--status", "--watch", "--check", "--snapshot", "--touch-check"].contains(where: arguments.contains) else {
+        guard ["--status", "--watch", "--check", "--snapshot", "--touch-check", "--link-check"].contains(where: arguments.contains) else {
             SideboardApp.main()
             return
         }
@@ -41,6 +41,13 @@ enum Main {
             let serial = arguments.dropFirst(flag + 1).first
             Task {
                 await TouchLinkCheck.run(serial: serial)
+                exit(0)
+            }
+        // --link-check [host:port [serial]]: Sideboard Link without the window; see LinkCheck.
+        } else if let flag = arguments.firstIndex(of: "--link-check") {
+            let rest = Array(arguments.dropFirst(flag + 1))
+            Task {
+                await LinkCheck.run(target: rest.first, serial: rest.dropFirst().first)
                 exit(0)
             }
         } else if let flag = arguments.firstIndex(of: "--snapshot") {

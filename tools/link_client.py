@@ -6,8 +6,10 @@ without the Mac app:
     tools/link_client.py HOST[:PORT] video SECONDS FILE.h264 [LONGEST_SIDE]
     tools/link_client.py HOST[:PORT] tap X Y            (0…1 across and down the screen)
     tools/link_client.py HOST[:PORT] swipe X1 Y1 X2 Y2
+    tools/link_client.py HOST[:PORT] scroll X Y ACROSS DOWN   (fractions of the screen; DOWN 0.3 shows what is further down)
     tools/link_client.py HOST[:PORT] key back|home|recents|notifications
     tools/link_client.py HOST[:PORT] text "some words"
+    tools/link_client.py HOST[:PORT] update APP.apk     (a newer copy of the app, signed with the same key)
 
 The first connection asks on the device; allow it there. The token made up for that is kept in
 ~/.sideboard-link-token (override with LINK_TOKEN).
@@ -68,6 +70,11 @@ def main():
     target, what, rest = sys.argv[1], sys.argv[2], sys.argv[3:]
     if what == "info":
         print(line(connect(target, "info")))
+    elif what == "update":
+        data = pathlib.Path(rest[0]).read_bytes()
+        sock = connect(target, f"update {len(data)}")
+        sock.sendall(data)
+        print(line(sock))
     elif what == "video":
         seconds, path = float(rest[0]), rest[1]
         sock = connect(target, f"video {rest[2] if len(rest) > 2 else 1280} 6000000")
@@ -100,6 +107,9 @@ def main():
                 sock.sendall(b"\x01" + spot(x1 + (x2 - x1) * step / 20, y1 + (y2 - y1) * step / 20))
             time.sleep(0.05)
             sock.sendall(b"\x02" + spot(x2, y2))
+        elif what == "scroll":
+            # how far the page should move across and down, as fractions of the screen
+            sock.sendall(b"\x05" + spot(*rest[:2]) + struct.pack(">hh", round(float(rest[2]) * 65535), round(float(rest[3]) * 65535)))
         elif what == "key":
             sock.sendall(bytes([3, ["back", "home", "recents", "notifications", "quick", "lock"].index(rest[0])]))
         elif what == "text":

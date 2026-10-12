@@ -30,12 +30,13 @@ import java.util.concurrent.TimeUnit
  *     SIDEBOARD-LINK 1
  *     <its token, 32 hex digits>
  *     <its name>
- *     <what it wants: "info", "video <longest side> <bits per second>" or "control">
+ *     <what it wants: "info", "video <longest side> <bits per second>", "control" or "update <bytes>">
  *
  * and one back: `ok`, or `pairing` followed, once the owner has answered here, by `ok` or
  * `denied`. After `ok`: for `info` one line of JSON; for `video` a line `video <width> <height>`
  * and then H.264 (Annex B) for as long as the Mac listens; for `control` a line `touch on` or
- * `touch off` and then the Mac's messages (see [TouchService]).
+ * `touch off` and then the Mac's messages (see [TouchService]); for `update` the Mac sends that many
+ * bytes of a newer copy of this app and gets `installing` back (see [Updater]).
  */
 class LinkService : Service() {
     private var server: ServerSocket? = null
@@ -52,6 +53,13 @@ class LinkService : Service() {
         notices.createNotificationChannel(NotificationChannel(REQUESTS, getString(R.string.channel_requests), NotificationManager.IMPORTANCE_HIGH))
         show(sharing = false)
         Thread(::listen, "link-listen").start()
+        Thread({
+            // Now, and every minute: the accessibility service back on if Android switched it off.
+            while (instance === this) {
+                runCatching { Keeper.ensure(this) }
+                runCatching { Thread.sleep(60_000) }
+            }
+        }, "link-keep").start()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_STICKY
@@ -133,8 +141,7 @@ class LinkService : Service() {
         val wish = readLine(input)?.split(' ') ?: return
 
         if (!Pairing.isAllowed(this, token)) {
-            val request = Pairing.Request(token, name)
-            if (!Pairing.ask(request)) return say("busy")
+            val request = Pairing.ask(token, name) ?: return say("busy")
             say("pairing")
             askOwner(request)
             val answered = request.answered.await(PAIRING_SECONDS, TimeUnit.SECONDS)
@@ -147,6 +154,10 @@ class LinkService : Service() {
         when (wish.firstOrNull()) {
             "info" -> say(info().toString())
             "video" -> ScreenCast.serve(this, client, wish.getOrNull(1)?.toIntOrNull() ?: 1280, wish.getOrNull(2)?.toIntOrNull() ?: 6_000_000)
+            "update" -> {
+                val size = wish.getOrNull(1)?.toLongOrNull()?.takeIf { it in 1..50_000_000 } ?: return say("refused")
+                say(if (Updater.install(this, input, size)) "installing" else "failed")
+            }
             "control" -> {
                 say(if (TouchService.instance != null) "touch on" else "touch off")
                 TouchService.listen(input)
@@ -185,7 +196,8 @@ class LinkService : Service() {
             .put("width", size.x)
             .put("height", size.y)
             .put("touch", TouchService.instance != null)
-            .put("version", BuildConfigLite.VERSION)
+            .put("keeps", Keeper.canKeep(this))
+            .put("version", runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrNull() ?: "")
     }
 
     companion object {
@@ -235,9 +247,4 @@ class LinkService : Service() {
             return null
         }
     }
-}
-
-/** The version, without generating a BuildConfig class for one string. */
-object BuildConfigLite {
-    const val VERSION = "0.1"
 }

@@ -39,7 +39,11 @@
 	<key>NSHumanReadableCopyright</key>
 	<string>MIT License</string>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Sideboard finds Android devices on your local network and connects to them with adb.</string>
+	<string>Sideboard finds Android devices on your local network and connects to them, with adb or with the Sideboard Link app.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_sideboard-link._tcp</string>
+	</array>
 	<key>NSServices</key>
 	<array>
 		<dict>

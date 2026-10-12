@@ -1,0 +1,459 @@
+import CoreMedia
+import Foundation
+import Network
+import Observation
+
+/// Sideboard Link: devices running the Sideboard Link app (android/link) show their screen and
+/// take touches over the local network, with no cable and no adb. The app announces itself with
+/// Bonjour, so the Mac finds the device whatever address the router gave it; the device's owner
+/// allows this Mac once, on the device, and from then on the Mac's token lets it in.
+///
+/// What a connection says is described in the app's LinkService.kt.
+enum SideLink {
+    static let serviceType = "_sideboard-link._tcp"
+    /// A live screen window is opened for a serial; Link devices get made-up ones starting with this.
+    static let serialPrefix = "link:"
+
+    /// This Mac's token: made up once, and what the device remembers having allowed.
+    static var token: String {
+        let defaults = UserDefaults.standard
+        if let saved = defaults.string(forKey: "linkToken"), saved.count == 32 { return saved }
+        let made = (0..<16).map { _ in String(format: "%02x", UInt8.random(in: 0...255)) }.joined()
+        defaults.set(made, forKey: "linkToken")
+        return made
+    }
+
+    /// What the device shows its owner when asking whether to allow this Mac.
+    static var macName: String {
+        let name = (Host.current().localizedName ?? "Mac").filter { !$0.isNewline }
+        return String(name.prefix(40))
+    }
+
+    static func isLink(_ serial: String) -> Bool { serial.hasPrefix(serialPrefix) }
+
+    static func serial(for name: String) -> String { serialPrefix + name }
+}
+
+/// A device found on the network.
+struct LinkDevice: Identifiable, Hashable {
+    /// The name it announces, such as "Sideboard Link (Pixel XL)".
+    let id: String
+    let endpoint: NWEndpoint
+
+    /// The device's own name, out of the announcement's brackets.
+    var name: String {
+        if let open = id.firstIndex(of: "("), let close = id.lastIndex(of: ")"), open < close {
+            return String(id[id.index(after: open)..<close])
+        }
+        return id
+    }
+
+    var serial: String { SideLink.serial(for: id) }
+}
+
+/// Watches the local network for devices announcing Sideboard Link.
+@MainActor @Observable
+final class LinkBrowser {
+    static let shared = LinkBrowser()
+
+    private(set) var devices: [LinkDevice] = []
+    private var browser: NWBrowser?
+    /// Devices named by address (SIDEBOARD_LINK=host:port,…), for trying things out through a forwarded port.
+    private let fixed: [LinkDevice]
+
+    private init() {
+        fixed = (ProcessInfo.processInfo.environment["SIDEBOARD_LINK"] ?? "").split(separator: ",").compactMap { entry in
+            let parts = entry.split(separator: ":")
+            guard parts.count == 2, let port = NWEndpoint.Port(String(parts[1])) else { return nil }
+            return LinkDevice(id: String(entry), endpoint: .hostPort(host: NWEndpoint.Host(String(parts[0])), port: port))
+        }
+        devices = fixed
+    }
+
+    func start() {
+        guard browser == nil else { return }
+        let browser = NWBrowser(for: .bonjour(type: SideLink.serviceType, domain: nil), using: .tcp)
+        browser.browseResultsChangedHandler = { [weak self] results, _ in
+            let found = results.compactMap { result -> LinkDevice? in
+                guard case let .service(name, _, _, _) = result.endpoint else { return nil }
+                return LinkDevice(id: name, endpoint: result.endpoint)
+            }
+            Task { @MainActor in
+                guard let self else { return }
+                self.devices = self.fixed + found.sorted { $0.id < $1.id }
+            }
+        }
+        browser.start(queue: .main)
+        self.browser = browser
+    }
+
+    func device(serial: String) -> LinkDevice? {
+        devices.first { $0.serial == serial }
+    }
+}
+
+/// One connection to a device: says who this Mac is and what it wants, then hands over what
+/// the device sends. Everything happens on `queue`.
+final class LinkChannel: @unchecked Sendable {
+    enum Progress: Sendable {
+        /// The device is asking its owner whether to allow this Mac.
+        case asking
+        /// Let in; `line` is the device's first line about what was asked for.
+        case open(line: String)
+        case failed(String)
+    }
+
+    private let connection: NWConnection
+    private let wish: String
+    private let queue: DispatchQueue
+    private var waitingLines: [String] = []
+    private var buffer = Data()
+    private var opened = false
+    private var finished = false
+
+    var onProgress: (@Sendable (Progress) -> Void)?
+    /// What comes after the device's first lines.
+    var onData: (@Sendable (Data) -> Void)?
+
+    init(endpoint: NWEndpoint, wish: String, queue: DispatchQueue) {
+        let options = NWProtocolTCP.Options()
+        options.noDelay = true
+        connection = NWConnection(to: endpoint, using: NWParameters(tls: nil, tcp: options))
+        self.wish = wish
+        self.queue = queue
+    }
+
+    func start() {
+        connection.stateUpdateHandler = { [weak self] state in
+            guard let self else { return }
+            switch state {
+            case .ready:
+                let hello = "SIDEBOARD-LINK 1\n\(SideLink.token)\n\(SideLink.macName)\n\(self.wish)\n"
+                self.connection.send(content: Data(hello.utf8), completion: .contentProcessed { _ in })
+                self.receive()
+            case let .failed(error):
+                self.fail(error.localizedDescription)
+            case let .waiting(error):
+                // Nobody there (yet): don't sit waiting for the network to change.
+                self.fail(error.localizedDescription)
+            default:
+                break
+            }
+        }
+        connection.start(queue: queue)
+    }
+
+    func send(_ data: Data) {
+        connection.send(content: data, completion: .contentProcessed { _ in })
+    }
+
+    func stop() {
+        queue.async {
+            self.finished = true
+            self.connection.cancel()
+        }
+    }
+
+    private func fail(_ reason: String) {
+        guard !finished else { return }
+        finished = true
+        connection.cancel()
+        onProgress?(.failed(reason))
+    }
+
+    private func receive() {
+        connection.receive(minimumIncompleteLength: 1, maximumLength: 256 * 1024) { [weak self] data, _, complete, error in
+            guard let self, !self.finished else { return }
+            if let data, !data.isEmpty { self.consume(data) }
+            if complete || error != nil {
+                self.fail(error?.localizedDescription ?? String(localized: "The device closed the connection."))
+            } else {
+                self.receive()
+            }
+        }
+    }
+
+    /// First the device's lines: "pairing" while it asks its owner, then "ok" and one line about
+    /// what was asked for; anything else is a refusal. After that, everything is handed over.
+    private func consume(_ data: Data) {
+        if opened {
+            onData?(data)
+            return
+        }
+        buffer.append(data)
+        while !opened, let end = buffer.firstIndex(of: 0x0A) {
+            let line = String(decoding: buffer[buffer.startIndex..<end], as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+            buffer.removeSubrange(buffer.startIndex...end)
+            if waitingLines.isEmpty {
+                switch line {
+                case "pairing":
+                    onProgress?(.asking)
+                case "ok":
+                    waitingLines.append(line)
+                case "denied":
+                    return fail(String(localized: "This Mac wasn't allowed on the device."))
+                case "busy":
+                    return fail(String(localized: "The device is answering another request. Try again in a moment."))
+                default:
+                    return fail(String(localized: "The device answered in a way Sideboard doesn't understand."))
+                }
+            } else {
+                opened = true
+                onProgress?(.open(line: line))
+            }
+        }
+        if opened, !buffer.isEmpty {
+            let rest = buffer
+            buffer = Data()
+            onData?(rest)
+        }
+    }
+}
+
+/// The device's screen as pictures, like `LiveStream`, but straight from the Link app.
+final class LinkStream: @unchecked Sendable {
+    enum Event: Sendable {
+        case asking
+        case live(width: Int, height: Int)
+        case failed(String)
+    }
+
+    var onSample: (@Sendable (CMSampleBuffer) -> Void)?
+    var onEvent: (@Sendable (Event) -> Void)?
+
+    private let endpoint: NWEndpoint
+    private let queue = DispatchQueue(label: "Sideboard.LinkStream", qos: .userInteractive)
+    private var channel: LinkChannel?
+    private var parser = AnnexBParser()
+    private var picture: [Data] = []
+    private var sps: Data?
+    private var pps: Data?
+    private var format: CMVideoFormatDescription?
+    private var stopped = false
+    private var reads = 0
+    private var pictures = 0
+    /// Tries again by itself a few times: the device ends the stream when its screen is turned.
+    private var quickFailures = 0
+    private var started = Date.distantPast
+
+    init(endpoint: NWEndpoint) {
+        self.endpoint = endpoint
+    }
+
+    func start() {
+        queue.async { self.open() }
+    }
+
+    func stop() {
+        queue.async {
+            self.stopped = true
+            self.channel?.stop()
+            self.channel = nil
+        }
+    }
+
+    /// Asks for the stream again, which begins with a whole picture.
+    func restart() {
+        queue.async {
+            guard !self.stopped else { return }
+            self.channel?.stop()
+            self.open()
+        }
+    }
+
+    private func open() {
+        guard !stopped else { return }
+        parser = AnnexBParser()
+        picture = []
+        format = nil
+        pictures = 0
+        started = Date()
+        // The longest side, in pixels, and bits per second.
+        let channel = LinkChannel(endpoint: endpoint, wish: "video 1600 8000000", queue: queue)
+        channel.onProgress = { [weak self, weak channel] progress in
+            guard let self, self.channel === channel else { return }
+            switch progress {
+            case .asking:
+                self.onEvent?(.asking)
+            case let .open(line):
+                if !line.hasPrefix("video ") {
+                    self.channel = nil
+                    self.onEvent?(.failed(String(localized: "The device didn't allow its screen to be captured. Turn on Sideboard Link under Accessibility on the device, or confirm there when asked.")))
+                }
+            case let .failed(reason):
+                self.ended(reason)
+            }
+        }
+        channel.onData = { [weak self, weak channel] data in
+            guard let self, self.channel === channel else { return }
+            self.consume(data)
+        }
+        self.channel = channel
+        channel.start()
+    }
+
+    private func ended(_ reason: String) {
+        channel = nil
+        guard !stopped else { return }
+        if pictures == 0, Date().timeIntervalSince(started) < 5 {
+            quickFailures += 1
+            if quickFailures >= 3 { return onEvent?(.failed(reason)) ?? () }
+        } else {
+            quickFailures = 0
+        }
+        queue.asyncAfter(deadline: .now() + 0.3) { self.open() }
+    }
+
+    private func consume(_ data: Data) {
+        guard !stopped else { return }
+        reads += 1
+        let result = parser.append(data)
+        for unit in result.units { handle(unit) }
+        if let header = parser.openHeader, H264.beginsPicture(header) { finishPicture() }
+        // The encoder hands over whole pictures; when nothing follows for a moment, the last one is complete.
+        let mark = reads
+        queue.asyncAfter(deadline: .now() + 0.03) { [weak self] in
+            guard let self, self.reads == mark, !self.stopped else { return }
+            if let unit = self.parser.takeOpen() { self.handle(unit) }
+            self.finishPicture()
+        }
+    }
+
+    private func handle(_ unit: Data) {
+        guard let header = unit.first else { return }
+        switch header & 0x1F {
+        case 1, 5:
+            if H264.beginsPicture(unit) { finishPicture() }
+            if format == nil, let sps, let pps, let made = H264.format(sps: sps, pps: pps) {
+                format = made
+                let dimensions = CMVideoFormatDescriptionGetDimensions(made)
+                onEvent?(.live(width: Int(dimensions.width), height: Int(dimensions.height)))
+            }
+            picture.append(unit)
+        case 7:
+            finishPicture()
+            if unit != sps { sps = unit; format = nil }
+        case 8:
+            finishPicture()
+            if unit != pps { pps = unit; format = nil }
+        case 6, 9, 10, 11:
+            finishPicture()
+        default:
+            break
+        }
+    }
+
+    private func finishPicture() {
+        guard !picture.isEmpty else { return }
+        defer { picture.removeAll(keepingCapacity: true) }
+        guard let format, let sample = H264.sample(picture, format: format) else { return }
+        pictures += 1
+        onSample?(sample)
+    }
+}
+
+/// Touches, keys and text for a Link device, sent as they happen.
+final class LinkTouch: @unchecked Sendable {
+    enum Key: UInt8 {
+        case back = 0, home = 1, recents = 2, notifications = 3, quickSettings = 4, lock = 5
+    }
+
+    private let endpoint: NWEndpoint
+    private let queue = DispatchQueue(label: "Sideboard.LinkTouch", qos: .userInteractive)
+    private let lock = NSLock()
+    private var channel: LinkChannel?
+    private var ready = false
+    private var touchOn = false
+    private var stopped = false
+
+    init(endpoint: NWEndpoint) {
+        self.endpoint = endpoint
+    }
+
+    /// Connected, and the device's accessibility service is on, so touches do something.
+    var isReady: Bool { lock.withLock { ready && touchOn } }
+    /// Connected, but the service is off on the device.
+    var isOff: Bool { lock.withLock { ready && !touchOn } }
+
+    func start() {
+        queue.async { self.open() }
+    }
+
+    func stop() {
+        queue.async {
+            self.stopped = true
+            self.lock.withLock { self.ready = false }
+            self.channel?.stop()
+            self.channel = nil
+        }
+    }
+
+    private func open() {
+        guard !stopped else { return }
+        let channel = LinkChannel(endpoint: endpoint, wish: "control", queue: queue)
+        channel.onProgress = { [weak self, weak channel] progress in
+            guard let self, self.channel === channel else { return }
+            switch progress {
+            case .asking:
+                break
+            case let .open(line):
+                self.lock.withLock {
+                    self.ready = true
+                    self.touchOn = line == "touch on"
+                }
+            case .failed:
+                self.lock.withLock { self.ready = false }
+                self.channel = nil
+                // The picture's connection is the one that reports trouble; this one just tries again.
+                self.queue.asyncAfter(deadline: .now() + 2) { self.open() }
+            }
+        }
+        self.channel = channel
+        channel.start()
+    }
+
+    /// `x` and `y` are fractions of the screen, from its top left corner.
+    func touch(_ action: TouchLink.Touch, x: Double, y: Double) {
+        // The app's own numbers, which are not the adb touch link's.
+        let kind: UInt8 = switch action {
+        case .down: 0
+        case .move: 1
+        case .up: 2
+        }
+        send(Data([kind]) + Self.spot(x, y))
+    }
+
+    /// A wheel turn over a point, in wheel clicks: positive is up, and to the right.
+    func scroll(x: Double, y: Double, horizontal: Double, vertical: Double) {
+        func distance(_ clicks: Double) -> Data {
+            // A click moves the page about a twelfth of the screen.
+            let value = Int16(max(-32767, min(32767, clicks / 12 * 65535)))
+            return withUnsafeBytes(of: value.bigEndian) { Data($0) }
+        }
+        send(Data([5]) + Self.spot(x, y) + distance(-horizontal) + distance(-vertical))
+    }
+
+    func press(_ key: Key) {
+        send(Data([3, key.rawValue]))
+    }
+
+    func type(_ text: String) {
+        let bytes = Data(text.utf8.prefix(60_000))
+        send(Data([4]) + withUnsafeBytes(of: UInt16(bytes.count).bigEndian) { Data($0) } + bytes)
+    }
+
+    private func send(_ message: Data) {
+        queue.async { [weak self] in
+            guard let self, self.lock.withLock({ self.ready }) else { return }
+            self.channel?.send(message)
+        }
+    }
+
+    private static func spot(_ x: Double, _ y: Double) -> Data {
+        func part(_ value: Double) -> Data {
+            let scaled = UInt16(max(0, min(65535, (value * 65535).rounded())))
+            return withUnsafeBytes(of: scaled.bigEndian) { Data($0) }
+        }
+        return part(x) + part(y)
+    }
+}

@@ -50,9 +50,18 @@ class TouchService : AccessibilityService() {
     override fun onInterrupt() {}
 
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
+        val from = event.packageName?.toString() ?: return
+        // Android's "update this app?", when the Mac sent the update: its Update button.
+        if (Updater.asking && from.endsWith("packageinstaller")) {
+            val root = rootInActiveWindow ?: return
+            val confirm = (root.findAccessibilityNodeInfosByViewId("$from:id/ok_button") + root.findAccessibilityNodeInfosByViewId("android:id/button1"))
+                .firstOrNull { it.isClickable && it.isEnabled }
+            confirm?.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+            return
+        }
         if (!ScreenCast.asking) return
         // Android's question belongs to the system's own interface.
-        if (event.packageName?.toString() != "com.android.systemui") return
+        if (from != "com.android.systemui") return
         val root = rootInActiveWindow ?: return
         val start = root.findAccessibilityNodeInfosByViewId("android:id/button1").firstOrNull { it.isClickable && it.isEnabled }
             ?: START_WORDS.firstNotNullOfOrNull { word -> root.findAccessibilityNodeInfosByText(word).firstOrNull { it.isClickable && it.isEnabled } }
@@ -131,7 +140,8 @@ class TouchService : AccessibilityService() {
 
     /** A wheel turn: a short swipe the other way, as a finger would do it. */
     private fun scroll(at: PointF, across: Float, downwards: Float) {
-        if (busy || stroke != null) return
+        // Not in the middle of a drag; anything else still running is over as far as the Mac is concerned.
+        if (stroke != null) return
         val size = ScreenCast.screenSize(this)
         val end = PointF((at.x - across).coerceIn(0f, size.x - 1f), (at.y - downwards).coerceIn(0f, size.y - 1f))
         val path = Path().apply { moveTo(at.x, at.y); lineTo(end.x, end.y) }

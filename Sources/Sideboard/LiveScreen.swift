@@ -11,6 +11,8 @@ import SwiftUI
 final class LiveScreen {
     enum State: Equatable {
         case connecting
+        /// A Link device is asking its owner whether to allow this Mac.
+        case asking
         case live
         /// The window is hidden or minimized, so the device isn't asked for pictures.
         case paused
@@ -30,6 +32,10 @@ final class LiveScreen {
     private var stream: LiveStream?
     /// Touches as they happen; without it (not connected yet, or the device can't) they go by `input`.
     private var link: TouchLink?
+    /// The same two for a device reached through Sideboard Link instead of adb.
+    private var linkStream: LinkStream?
+    private var linkTouch: LinkTouch?
+    var isLink: Bool { SideLink.isLink(serial) }
     private var running = false
     private var visible = true
     /// The screen in the device's own coordinates, which touches use: a TV may draw at 1920 × 1080
@@ -76,13 +82,14 @@ final class LiveScreen {
         self.visible = visible
         if visible {
             resume()
-        } else if stream != nil {
+        } else if stream != nil || linkStream != nil {
             suspend()
             state = .paused
         }
     }
 
     private func resume() {
+        if isLink { return resumeLink() }
         guard running, visible, stream == nil, let adb else { return }
         state = .connecting
         screenOff = false
@@ -114,11 +121,69 @@ final class LiveScreen {
         }
     }
 
+    /// The same as `resume()`, for a device that streams and takes touches by itself.
+    private func resumeLink() {
+        guard running, visible, linkStream == nil else { return }
+        guard let device = LinkBrowser.shared.device(serial: serial) else {
+            state = .failed(String(localized: "The device isn't on the network right now. Is it on, on the same Wi-Fi, with Sideboard Link installed?"))
+            return
+        }
+        state = .connecting
+        screenOff = false
+        stillWaiting = false
+        let stream = LinkStream(endpoint: device.endpoint)
+        nonisolated(unsafe) let renderer = layer.sampleBufferRenderer
+        stream.onSample = { [weak stream] sample in
+            if renderer.status == .failed {
+                renderer.flush()
+                stream?.restart()
+                return
+            }
+            renderer.enqueue(sample)
+        }
+        stream.onEvent = { [weak self] event in
+            Task { @MainActor in self?.received(event) }
+        }
+        linkStream = stream
+        stream.start()
+        let touch = LinkTouch(endpoint: device.endpoint)
+        linkTouch = touch
+        touch.start()
+        waiting?.cancel()
+        waiting = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(6))
+            await self?.checkWaiting()
+        }
+    }
+
+    private func received(_ event: LinkStream.Event) {
+        guard linkStream != nil else { return }
+        switch event {
+        case .asking:
+            state = .asking
+        case let .live(width, height):
+            state = .live
+            stillWaiting = false
+            videoSize = CGSize(width: width, height: height)
+        case let .failed(reason):
+            linkStream = nil
+            waiting?.cancel()
+            state = .failed(reason)
+        }
+    }
+
+    /// True when the device is connected but its accessibility service is off, so the mouse does nothing there.
+    var touchIsOff: Bool { linkTouch?.isOff ?? false }
+
     private func suspend() {
         stream?.stop()
         stream = nil
         link?.stop()
         link = nil
+        linkStream?.stop()
+        linkStream = nil
+        linkTouch?.stop()
+        linkTouch = nil
         waiting?.cancel()
     }
 
@@ -141,6 +206,10 @@ final class LiveScreen {
 
     /// Nothing after a few seconds: tell why if we can.
     private func checkWaiting() async {
+        if isLink {
+            if state == .connecting { stillWaiting = true }
+            return
+        }
         guard state == .connecting, let adb else { return }
         let power = await adb.shell(serial, "dumpsys power | grep -m1 mWakefulness=")
         guard state == .connecting else { return }
@@ -154,7 +223,7 @@ final class LiveScreen {
     /// `mOverrideDisplayInfo=DisplayInfo{"Built-in Screen", displayId 0, …, real 1920 x 1080, …}`:
     /// the size apps and touches use, turned the way the screen is.
     private func readScreenSize() async {
-        guard let adb, let output = await adb.shell(serial, "dumpsys display | grep -m1 mOverrideDisplayInfo"),
+        guard !isLink, let adb, let output = await adb.shell(serial, "dumpsys display | grep -m1 mOverrideDisplayInfo"),
               let match = output.firstMatch(of: /real (\d+) x (\d+)/),
               let width = Double(match.1), let height = Double(match.2), width > 0, height > 0 else { return }
         screenSize = CGSize(width: width, height: height)
@@ -176,7 +245,11 @@ final class LiveScreen {
     }
 
     func press(_ key: RemoteKey) {
-        if let link, link.isReady {
+        if isLink {
+            // The Link app knows the three navigation buttons; the rest need adb.
+            let known: [RemoteKey: LinkTouch.Key] = [.back: .back, .home: .home, .recentApps: .recents]
+            if let mapped = known[key] { linkTouch?.press(mapped) }
+        } else if let link, link.isReady {
             link.press(key.rawValue)
         } else {
             send("input keyevent \(key.rawValue)")
@@ -184,10 +257,14 @@ final class LiveScreen {
     }
 
     /// True when touches reach the device as they happen, so a drag can follow the mouse.
-    var followsFinger: Bool { link?.isReady ?? false }
+    var followsFinger: Bool { isLink ? linkTouch != nil : link?.isReady ?? false }
 
     /// A finger going down, moving or lifting at `point` (fractions of the picture, as for `tap`).
     func touch(_ action: TouchLink.Touch, at point: CGPoint) {
+        if let linkTouch {
+            linkTouch.touch(action, x: min(max(point.x, 0), 1), y: min(max(point.y, 0), 1))
+            return
+        }
         guard let link, let screen = deviceScreen else { return }
         let (x, y) = devicePoint(point)
         link.touch(action, x: x, y: y, screen: screen)
@@ -195,6 +272,10 @@ final class LiveScreen {
 
     /// A mouse wheel turned over `point`, in wheel clicks: positive is up, and to the right.
     func scroll(at point: CGPoint, horizontal: Double, vertical: Double) {
+        if let linkTouch {
+            linkTouch.scroll(x: min(max(point.x, 0), 1), y: min(max(point.y, 0), 1), horizontal: horizontal, vertical: vertical)
+            return
+        }
         guard let link, let screen = deviceScreen else { return }
         let (x, y) = devicePoint(point)
         link.scroll(x: x, y: y, screen: screen, horizontal: horizontal, vertical: vertical)
@@ -209,6 +290,11 @@ final class LiveScreen {
         retry()
     }
 
+    /// Text typed on the Mac, for the field that has the cursor on a Link device.
+    func type(_ text: String) {
+        linkTouch?.type(text)
+    }
+
     private func devicePoint(_ point: CGPoint) -> (Int, Int) {
         let size = screenSize ?? videoSize ?? CGSize(width: 1, height: 1)
         let x = min(max(point.x, 0), 1) * (size.width - 1)
@@ -217,7 +303,7 @@ final class LiveScreen {
     }
 
     private func send(_ command: String) {
-        guard let adb else { return }
+        guard let adb, !isLink else { return }
         let previous = input
         input = Task { [serial] in
             await previous?.value
@@ -251,7 +337,8 @@ struct LiveScreenWindow: View {
             DockIcon.windowOpened()
             let store = AppModels.shared.store
             let dashboard = store.dashboard(for: serial)
-            name = store.entries.first { $0.id == serial }?.name ?? dashboard.status?.model
+            LinkBrowser.shared.start()
+            name = LinkBrowser.shared.device(serial: serial)?.name ?? store.entries.first { $0.id == serial }?.name ?? dashboard.status?.model
             let live = dashboard.liveScreen()
             self.dashboard = dashboard
             self.live = live
@@ -281,11 +368,14 @@ struct LiveScreenView: View {
                         .help(Text("Home"))
                     Button { live.press(.recentApps) } label: { Label("Recent apps", systemImage: "square.on.square") }
                         .help(Text("Recent apps"))
-                    Button { showingRemote.toggle() } label: { Label("Remote", systemImage: "av.remote") }
-                        .help(Text("Remote"))
-                        .popover(isPresented: $showingRemote, arrowEdge: .bottom) {
-                            RemoteView(model: dashboard)
-                        }
+                    // The remote's other buttons go by adb, which a Link device doesn't need to have.
+                    if !live.isLink {
+                        Button { showingRemote.toggle() } label: { Label("Remote", systemImage: "av.remote") }
+                            .help(Text("Remote"))
+                            .popover(isPresented: $showingRemote, arrowEdge: .bottom) {
+                                RemoteView(model: dashboard)
+                            }
+                    }
                 }
                 .labelStyle(.iconOnly)
             }
@@ -296,8 +386,18 @@ struct LiveScreenView: View {
                 overlay
             }
             VStack(spacing: 2) {
-                Text("Click to tap, drag to swipe, right-click to go back. Arrow keys, Return and Esc work too.")
-                Text("HDMI inputs and protected video show black, and there's no sound.")
+                if live.isLink {
+                    if live.touchIsOff {
+                        Text("The mouse does nothing yet: turn on Sideboard Link under Accessibility on the device.")
+                            .foregroundStyle(.orange)
+                    } else {
+                        Text("Click to tap, drag to swipe, right-click to go back. What you type goes to the field with the cursor.")
+                    }
+                    Text("Over your local network, without adb. Protected video shows black, and there's no sound.")
+                } else {
+                    Text("Click to tap, drag to swipe, right-click to go back. Arrow keys, Return and Esc work too.")
+                    Text("HDMI inputs and protected video show black, and there's no sound.")
+                }
             }
             .font(.caption)
             .foregroundStyle(.secondary)
@@ -309,7 +409,7 @@ struct LiveScreenView: View {
 
     @ViewBuilder private var status: some View {
         switch live.state {
-        case .connecting:
+        case .connecting, .asking:
             HStack(spacing: 6) {
                 ProgressView().controlSize(.small)
                 Text("Connecting…")
@@ -357,6 +457,17 @@ struct LiveScreenView: View {
                     .lineLimit(6)
                     .textSelection(.enabled)
                 Button("Try Again") { live.retry() }
+            }
+            .foregroundStyle(.white)
+            .padding(20)
+        case .asking:
+            VStack(spacing: 10) {
+                Image(systemName: "hand.raised").font(.largeTitle)
+                Text("Allow this Mac on the device.")
+                Text("The device is showing a request from “\(SideLink.macName)”. It asks only this once.")
+                    .font(.caption)
+                    .foregroundStyle(.white.opacity(0.7))
+                    .multilineTextAlignment(.center)
             }
             .foregroundStyle(.white)
             .padding(20)
@@ -575,6 +686,23 @@ final class LiveScreenNSView: NSView {
     // MARK: Keyboard
 
     override func keyDown(with event: NSEvent) {
+        if live.isLink {
+            // No remote buttons there: Esc goes back, and the rest is typing.
+            switch event.keyCode {
+            case 53: live.press(.back)
+            case 36, 76: live.type("\n")
+            case 51: live.type("\u{8}")
+            default:
+                let typed = event.characters ?? ""
+                let command = event.modifierFlags.contains(.command) || event.modifierFlags.contains(.control)
+                if !command, !typed.isEmpty, typed.unicodeScalars.allSatisfy({ $0.value >= 0x20 && !(0xF700...0xF8FF).contains($0.value) }) {
+                    live.type(typed)
+                } else {
+                    super.keyDown(with: event)
+                }
+            }
+            return
+        }
         let keys: [UInt16: RemoteKey] = [
             126: .up, 125: .down, 123: .left, 124: .right, 36: .ok, 76: .ok, 53: .back, 51: .back, 49: .playPause,
         ]

@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- On purpose there is no microphone and no camera permission here: this app shows the screen's
+         picture and nothing else. Keep it that way. -->
     <!-- Listening on the local network for the Mac, and announcing this device there (mDNS). -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
@@ -9,11 +11,20 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Two things only adb can allow, done once when Sideboard sets this app up over a cable:
+         keeping its own accessibility service switched on (Android switches such services off when
+         their app is updated or crashes), and installing its own updates sent by the Mac, so the
+         cable is never needed again. -->
+    <uses-permission
+        android:name="android.permission.WRITE_SECURE_SETTINGS"
+        xmlns:tools="http://schemas.android.com/tools"
+        tools:ignore="ProtectedPermissions" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <!-- Waiting for the Mac again after the device restarts. -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
-    <!-- Everything runs before the first unlock after a restart too, so the Mac can reach a
-         device nobody has touched since it started. -->
+    <!-- Everything runs before the first unlock after a restart too (each part says so itself,
+         which is what Android goes by), so the Mac can reach a device nobody has touched since it started. -->
     <application
         android:allowBackup="false"
         android:directBootAware="true"
@@ -24,6 +35,7 @@
 
         <activity
             android:name=".MainActivity"
+            android:directBootAware="true"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -34,6 +46,7 @@
         <!-- Asks Android for permission to capture the screen; shows nothing itself. -->
         <activity
             android:name=".CaptureActivity"
+            android:directBootAware="true"
             android:excludeFromRecents="true"
             android:exported="false"
             android:taskAffinity=""
@@ -41,12 +54,14 @@
 
         <service
             android:name=".LinkService"
+            android:directBootAware="true"
             android:exported="false"
             android:foregroundServiceType="connectedDevice|mediaProjection" />
 
         <!-- Touches from the Mac become gestures here. Turned on by the owner in Settings, once. -->
         <service
             android:name=".TouchService"
+            android:directBootAware="true"
             android:exported="true"
             android:label="@string/touch_service"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
@@ -60,11 +75,24 @@
 
         <receiver
             android:name=".Receiver"
+            android:directBootAware="true"
             android:exported="false">
             <intent-filter>
                 <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Lets Sideboard on a Mac that already has this device on adb allow itself, so nobody
+             has to answer on the device. DUMP is held by the adb shell and can't be had by apps. -->
+        <receiver
+            android:name=".AdbReceiver"
+            android:directBootAware="true"
+            android:exported="true"
+            android:permission="android.permission.DUMP">
+            <intent-filter>
+                <action android:name="app.sideboard.link.PAIR" />
             </intent-filter>
         </receiver>
     </application>
