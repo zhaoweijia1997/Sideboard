@@ -266,6 +266,7 @@ private struct OverviewPage: View {
                 }
                 TimelineSection(model: model)
                 CompanionSection(model: model)
+                LinkSection(serial: model.serial)
             } else {
                 HStack {
                     ProgressView().controlSize(.small)

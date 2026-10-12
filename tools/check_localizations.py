@@ -49,7 +49,7 @@ CATEGORY_PATTERN = re.compile(r"case \.\w+: " + LITERAL)
 # Strings that are deliberately not translated.
 NOT_LOCALIZED = {"Sideboard", "2.4 GHz", "5 GHz", "6 GHz", "/", " …"}
 # Not UI: adb's own messages, the --status report and the made-up screenshot data.
-SKIPPED_FILES = {"Adb.swift", "SideboardApp.swift", "Snapshots.swift", "TouchLinkCheck.swift"}
+SKIPPED_FILES = {"Adb.swift", "SideboardApp.swift", "Snapshots.swift", "TouchLinkCheck.swift", "LinkCheck.swift"}
 
 
 def read_strings(path):

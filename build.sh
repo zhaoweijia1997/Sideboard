@@ -25,6 +25,8 @@ cp -R Resources/Localization/*.lproj "$APP/Contents/Resources/"
 [[ -f Resources/AppIcon.icns ]] && cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 # The Android companion app, installed on devices from Sideboard (tools/build-companion.sh rebuilds it).
 [[ -f Resources/SideboardCompanion.apk ]] && cp Resources/SideboardCompanion.apk Resources/SideboardCompanion.version "$APP/Contents/Resources/"
+# The Link app, for devices to be seen and used without adb.
+[[ -f Resources/SideboardLink.apk ]] && cp Resources/SideboardLink.apk Resources/SideboardLink.version "$APP/Contents/Resources/"
 # The device-side server of scrcpy (Apache License 2.0), for touches in the live screen.
 cp Resources/scrcpy-server Resources/scrcpy-LICENSE.txt "$APP/Contents/Resources/"
 codesign --force --sign - "$APP"

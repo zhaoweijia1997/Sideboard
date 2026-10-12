@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.8.0 — 2026-10-12
+
+- **Sideboard Link: a device's screen without a cable or adb.** adb over Wi-Fi is gone every
+  time a phone restarts. Sideboard Link is a second small Android app (`android/link`, about
+  90 KB) that shows the screen and takes the mouse, the wheel, keys and typed text over the
+  local network by itself.
+  - Set up once from the device's Overview page while it is still on adb; after that the
+    device announces itself (Bonjour) and appears under “Without adb” in the sidebar at any
+    address, also after a restart.
+  - The picture is H.264 straight from Android's own screen capture; touches are gestures
+    from an accessibility service, and a drag follows the mouse.
+  - Only a Mac allowed on the device gets in: it asks its owner once, or Sideboard allows
+    itself over adb during set-up.
+  - No microphone and no camera permission. Nothing leaves the local network. The connection
+    isn't encrypted yet, so it is for networks you trust.
+  - The app switches its own accessibility service back on when Android has switched it off,
+    runs before the first unlock after a restart, and takes its own updates from Sideboard
+    over the network.
+  - Limits: after a restart, a device with a screen lock shows no picture until it has been
+    unlocked once; recent Android versions want the update confirmed on the device, and Google
+    Play Protect may ask to scan the app. Apps, files, health and history still go by adb.
+- `--link-check` tries Sideboard Link without the window: who announces it on the network,
+  and with an address, the picture and (on an emulator or a phone on adb) a drag, the wheel
+  and Home. `tools/link_client.py` does the same from Python.
+
 ## 0.7.0 — 2026-10-11
 
 - **The mouse is a finger in the live screen.** Press, drag and let go, and the device gets a

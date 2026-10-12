@@ -8,7 +8,7 @@ import UserNotifications
 enum Main {
     static func main() {
         let arguments = CommandLine.arguments
-        guard ["--status", "--watch", "--check", "--snapshot", "--touch-check", "--link-check"].contains(where: arguments.contains) else {
+        guard ["--status", "--watch", "--check", "--snapshot", "--touch-check", "--link-check", "--link-setup"].contains(where: arguments.contains) else {
             SideboardApp.main()
             return
         }
@@ -42,6 +42,18 @@ enum Main {
             Task {
                 await TouchLinkCheck.run(serial: serial)
                 exit(0)
+            }
+        // --link-setup serial: what the Set Up Sideboard Link button does, for a device on adb.
+        } else if let flag = arguments.firstIndex(of: "--link-setup"), let serial = arguments.dropFirst(flag + 1).first {
+            Task {
+                guard let adb = Adb.locate() else {
+                    print("adb not found")
+                    exit(1)
+                }
+                let failure = await LinkSetup.setUp(adb, serial)
+                let version = await LinkSetup.installedVersion(adb, serial)
+                print(failure ?? "Set up. Installed version: \(version ?? "?")")
+                exit(failure == nil ? 0 : 1)
             }
         // --link-check [host:port [serial]]: Sideboard Link without the window; see LinkCheck.
         } else if let flag = arguments.firstIndex(of: "--link-check") {

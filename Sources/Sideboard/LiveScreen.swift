@@ -1,5 +1,6 @@
 import AVFoundation
 import AppKit
+import Network
 import Observation
 import SwiftUI
 
@@ -149,6 +150,7 @@ final class LiveScreen {
         let touch = LinkTouch(endpoint: device.endpoint)
         linkTouch = touch
         touch.start()
+        Task { await checkLinkVersion(device.endpoint) }
         waiting?.cancel()
         waiting = Task { [weak self] in
             try? await Task.sleep(for: .seconds(6))
@@ -169,6 +171,25 @@ final class LiveScreen {
             linkStream = nil
             waiting?.cancel()
             state = .failed(reason)
+        }
+    }
+
+    /// A Link device whose app is older than the one Sideboard carries: it can be sent the newer one.
+    private(set) var linkUpdateAvailable = false
+    private(set) var linkUpdating = false
+
+    private func checkLinkVersion(_ endpoint: NWEndpoint) async {
+        guard let bundled = LinkSetup.bundledVersion, let installed = await LinkSetup.version(of: endpoint) else { return }
+        linkUpdateAvailable = LinkSetup.isNewer(bundled, than: installed)
+    }
+
+    /// Sends the newer app; the device installs it and is back a moment later.
+    func updateLinkApp() {
+        guard let device = LinkBrowser.shared.device(serial: serial), !linkUpdating else { return }
+        linkUpdating = true
+        Task {
+            if await LinkSetup.sendUpdate(to: device.endpoint) { linkUpdateAvailable = false }
+            linkUpdating = false
         }
     }
 
@@ -394,6 +415,15 @@ struct LiveScreenView: View {
                         Text("Click to tap, drag to swipe, right-click to go back. What you type goes to the field with the cursor.")
                     }
                     Text("Over your local network, without adb. Protected video shows black, and there's no sound.")
+                    if live.linkUpdateAvailable {
+                        HStack(spacing: 6) {
+                            Text("A newer Sideboard Link is ready for this device.")
+                            Button("Update") { live.updateLinkApp() }
+                                .controlSize(.small)
+                                .disabled(live.linkUpdating)
+                                .help(Text("Sends the app to the device. If the device asks whether to install or scan it, answer there or with the mouse here."))
+                        }
+                    }
                 } else {
                     Text("Click to tap, drag to swipe, right-click to go back. Arrow keys, Return and Esc work too.")
                     Text("HDMI inputs and protected video show black, and there's no sound.")

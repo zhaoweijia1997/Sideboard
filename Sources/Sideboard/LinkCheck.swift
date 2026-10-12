@@ -23,6 +23,7 @@ enum LinkCheck {
             try? await Task.sleep(for: .seconds(5))
             let found = await browser.devices
             for device in found { print("  \(device.name)") }
+            if await browser.blocked { print("  macOS isn't letting this copy of Sideboard look on the local network (Privacy & Security → Local Network)") }
             print(found.isEmpty ? "Nobody announces Sideboard Link" : "\(found.count) found")
             return
         }

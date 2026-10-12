@@ -132,6 +132,40 @@ its history.
   <img src="docs/screenshots/overview-en-light.png" width="760" alt="A week of screen time and the history of one day">
 </p>
 
+## Sideboard Link: the screen without a cable or adb (optional)
+
+adb over Wi-Fi is gone every time a phone restarts, and then somebody has to plug the cable in
+again. **Sideboard Link** is a second small app (about 90 KB) for devices you'd rather leave
+alone: with it, the device's screen opens in Sideboard, and the mouse and keyboard work on it,
+over your local network with no adb at all.
+
+- **Set up once, over adb**: on the device's Overview page, click Set Up Sideboard Link. That
+  installs the app, gives it what only adb can give, and allows your Mac. From then on the
+  cable can stay out.
+- **It finds your Mac by itself.** The device announces itself on the network (Bonjour), so it
+  shows up under “Without adb” in the sidebar at whatever address the router gives it, also
+  after a restart.
+- **Mouse, wheel, keys and typing**: a drag is a finger that follows the mouse; Esc and
+  right-click go back; what you type goes into the field with the cursor, in any language.
+- **Only a Mac you allowed.** A Mac that isn't known to the device makes it ask its owner,
+  once. Forget all Macs in the app on the device.
+- **No microphone, no camera.** The app has neither permission. It shows the screen's picture
+  and nothing else, and nothing leaves your network.
+- **It looks after itself**: it switches its accessibility service back on when Android has
+  switched it off, and it can take its own updates from Sideboard over the network.
+
+What to know:
+
+- Everything else in Sideboard (apps, files, health, history, screenshots) still goes by adb.
+- The connection isn't encrypted: use it on a network you trust.
+- After a restart, a device with a screen lock shows no picture until it has been unlocked
+  once (Android doesn't put the capture question in front of the lock screen); touches reach
+  it before that.
+- On recent Android versions the system's own “update this app?” has to be confirmed on the
+  device; Google Play Protect may also ask whether to scan the app.
+- Android 8 or later. Tried on a Pixel XL (Android 10), a Pixel 3 XL (Android 12) and an
+  Android 16 emulator.
+
 ## What it does (only when you click)
 
 - **Live screen**: the device's screen in a window on your Mac, streamed by Android's own

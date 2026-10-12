@@ -57,6 +57,8 @@ final class LinkBrowser {
     static let shared = LinkBrowser()
 
     private(set) var devices: [LinkDevice] = []
+    /// macOS isn't letting Sideboard look on the local network (Privacy & Security → Local Network).
+    private(set) var blocked = false
     private var browser: NWBrowser?
     /// Devices named by address (SIDEBOARD_LINK=host:port,…), for trying things out through a forwarded port.
     private let fixed: [LinkDevice]
@@ -83,6 +85,15 @@ final class LinkBrowser {
                 self.devices = self.fixed + found.sorted { $0.id < $1.id }
             }
         }
+        browser.stateUpdateHandler = { [weak self] state in
+            let denied: Bool
+            switch state {
+            case .waiting, .failed: denied = true
+            case .ready: denied = false
+            default: return
+            }
+            Task { @MainActor in self?.blocked = denied }
+        }
         browser.start(queue: .main)
         self.browser = browser
     }
@@ -105,6 +116,7 @@ final class LinkChannel: @unchecked Sendable {
 
     private let connection: NWConnection
     private let wish: String
+    private let payload: Data?
     private let queue: DispatchQueue
     private var waitingLines: [String] = []
     private var buffer = Data()
@@ -115,7 +127,9 @@ final class LinkChannel: @unchecked Sendable {
     /// What comes after the device's first lines.
     var onData: (@Sendable (Data) -> Void)?
 
-    init(endpoint: NWEndpoint, wish: String, queue: DispatchQueue) {
+    /// `payload` goes out straight after the opening lines: an update's bytes.
+    init(endpoint: NWEndpoint, wish: String, queue: DispatchQueue, payload: Data? = nil) {
+        self.payload = payload
         let options = NWProtocolTCP.Options()
         options.noDelay = true
         connection = NWConnection(to: endpoint, using: NWParameters(tls: nil, tcp: options))
@@ -129,7 +143,7 @@ final class LinkChannel: @unchecked Sendable {
             switch state {
             case .ready:
                 let hello = "SIDEBOARD-LINK 1\n\(SideLink.token)\n\(SideLink.macName)\n\(self.wish)\n"
-                self.connection.send(content: Data(hello.utf8), completion: .contentProcessed { _ in })
+                self.connection.send(content: Data(hello.utf8) + (self.payload ?? Data()), completion: .contentProcessed { _ in })
                 self.receive()
             case let .failed(error):
                 self.fail(error.localizedDescription)
@@ -455,5 +469,122 @@ final class LinkTouch: @unchecked Sendable {
             return withUnsafeBytes(of: scaled.bigEndian) { Data($0) }
         }
         return part(x) + part(y)
+    }
+}
+
+/// Putting the Link app on a device and looking after it.
+enum LinkSetup {
+    static let package = "app.sideboard.link"
+
+    static var bundledAPK: URL? { Bundle.main.url(forResource: "SideboardLink", withExtension: "apk") }
+
+    /// Written next to the APK by tools/build-companion.sh.
+    static var bundledVersion: String? {
+        guard let apk = bundledAPK else { return nil }
+        return try? String(contentsOf: apk.deletingPathExtension().appendingPathExtension("version"), encoding: .utf8)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    static func isNewer(_ version: String, than installed: String) -> Bool {
+        version.compare(installed, options: .numeric) == .orderedDescending
+    }
+
+    /// The version installed on a device that is on adb; nil when it isn't there.
+    static func installedVersion(_ adb: Adb, _ serial: String) async -> String? {
+        guard let output = await adb.shell(serial, "dumpsys package \(package) | grep -m1 versionName="),
+              let match = output.firstMatch(of: /versionName=(\S+)/) else { return nil }
+        return String(match.1)
+    }
+
+    /// Over adb: installs or updates the app, gives it what only adb can give (keeping its own
+    /// accessibility service on, installing its own updates, not being put to sleep), allows
+    /// this Mac, and starts it. After this the device needs no cable and no adb for its screen.
+    /// Returns nil on success, otherwise the reason.
+    static func setUp(_ adb: Adb, _ serial: String) async -> String? {
+        guard let apk = bundledAPK else { return "SideboardLink.apk is missing from Sideboard" }
+        if let error = await adb.install(serial, apk: apk) { return error }
+        _ = await adb.shellOutput(serial, "pm grant \(package) android.permission.WRITE_SECURE_SETTINGS")
+        _ = await adb.shellOutput(serial, "appops set \(package) REQUEST_INSTALL_PACKAGES allow")
+        _ = await adb.shellOutput(serial, "dumpsys deviceidle whitelist +\(package)")
+        // Android 13 and later ask before an app may show notifications; this one needs its own to keep running.
+        _ = await adb.shellOutput(serial, "pm grant \(package) android.permission.POST_NOTIFICATIONS 2>/dev/null")
+        let name = SideLink.macName.replacingOccurrences(of: "'", with: "")
+        let paired = await adb.shellOutput(serial, "am broadcast -a \(package).PAIR -n \(package)/.AdbReceiver --es token \(SideLink.token) --es name '\(name)'")
+        guard paired?.contains("result=1") == true else {
+            return String(localized: "The app was installed, but this Mac couldn't be allowed on the device. Open Sideboard Link on the device once and try again.")
+        }
+        // Opening it once starts the service; with the permission above it switches its accessibility service on by itself.
+        _ = await adb.shellOutput(serial, "am start -n \(package)/.MainActivity")
+        return nil
+    }
+
+    static func uninstall(_ adb: Adb, _ serial: String) async -> String? {
+        await AppList.uninstall(adb, serial, package)
+    }
+
+    /// The version of the app on a Link device, asked over the network.
+    static func version(of endpoint: NWEndpoint) async -> String? {
+        let queue = DispatchQueue(label: "Sideboard.LinkInfo")
+        return await withCheckedContinuation { continuation in
+            let channel = LinkChannel(endpoint: endpoint, wish: "info", queue: queue)
+            let once = Once()
+            channel.onProgress = { progress in
+                switch progress {
+                case .asking:
+                    break
+                case let .open(line):
+                    let found = (try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any])?["version"] as? String
+                    if once.take() { continuation.resume(returning: found) }
+                    channel.stop()
+                case .failed:
+                    if once.take() { continuation.resume(returning: nil) }
+                }
+            }
+            channel.start()
+            queue.asyncAfter(deadline: .now() + 8) {
+                if once.take() { continuation.resume(returning: nil) }
+                channel.stop()
+            }
+        }
+    }
+
+    /// Sends the bundled app to a Link device, which installs it over itself. True once the
+    /// device has it; the device then asks for confirmation on its screen (and answers that
+    /// itself where Android lets it), and is back a moment later.
+    static func sendUpdate(to endpoint: NWEndpoint) async -> Bool {
+        guard let apk = bundledAPK, let data = try? Data(contentsOf: apk) else { return false }
+        let queue = DispatchQueue(label: "Sideboard.LinkUpdate")
+        return await withCheckedContinuation { continuation in
+            let channel = LinkChannel(endpoint: endpoint, wish: "update \(data.count)", queue: queue, payload: data)
+            let once = Once()
+            channel.onProgress = { progress in
+                switch progress {
+                case .asking:
+                    break
+                case let .open(line):
+                    if once.take() { continuation.resume(returning: line == "installing") }
+                    channel.stop()
+                case .failed:
+                    if once.take() { continuation.resume(returning: false) }
+                }
+            }
+            channel.start()
+            queue.asyncAfter(deadline: .now() + 60) {
+                if once.take() { continuation.resume(returning: false) }
+                channel.stop()
+            }
+        }
+    }
+
+    private final class Once: @unchecked Sendable {
+        private let lock = NSLock()
+        private var taken = false
+        func take() -> Bool {
+            lock.withLock {
+                if taken { return false }
+                taken = true
+                return true
+            }
+        }
     }
 }
