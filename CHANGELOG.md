@@ -1,5 +1,12 @@
 # Changelog
 
+## Sideboard Viewer 0.1 — 2026-10-12
+
+- A new Android app, `android/viewer`: another phone or tablet as the screen and the finger
+  for a device that runs Sideboard Link. It finds Link devices on the network, shows the
+  picture, sends touches as they happen, and has Back, Home, Recents and a field for typing.
+  No microphone, no camera. Tried with a Pixel 3 XL (Android 12) using a Pixel XL (Android 10).
+
 ## 0.8.0 — 2026-10-12
 
 - **Sideboard Link: a device's screen without a cable or adb.** adb over Wi-Fi is gone every

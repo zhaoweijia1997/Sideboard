@@ -154,6 +154,8 @@ over your local network with no adb at all.
 - **It looks after itself**: it switches its accessibility service back on when Android has
   switched it off, and it can take its own updates from Sideboard over the network.
 
+There is a small Android app for the other side as well: **Sideboard Viewer** (`android/viewer`, an APK on the Releases page) shows a Link device's screen on another phone or tablet and takes your touches for it.
+
 What to know:
 
 - Everything else in Sideboard (apps, files, health, history, screenshots) still goes by adb.

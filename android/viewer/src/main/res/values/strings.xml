@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name" translatable="false">Sideboard Viewer</string>
+    <string name="main_body">See and use another Android device that runs Sideboard Link, over your local network. Nothing leaves your network, and the other device asks its owner before letting this one in.</string>
+    <string name="found_title">On this network</string>
+    <string name="found_none">Looking for devices with Sideboard Link…</string>
+    <string name="address_hint">Or an address, like 192.168.1.42</string>
+    <string name="connect">Connect</string>
+    <string name="state_connecting">Connecting…</string>
+    <string name="state_asking">Allow “%1$s” on the other device.</string>
+    <string name="state_denied">The other device didn\'t allow this one.</string>
+    <string name="state_busy">The other device is answering another request. Trying again…</string>
+    <string name="state_refused">The other device didn\'t allow its screen to be captured. Turn on Sideboard Link under Accessibility there, or confirm on it when asked.</string>
+    <string name="state_lost">The connection ended. Trying again…</string>
+    <string name="state_touch_off">Touches do nothing yet: turn on Sideboard Link under Accessibility on the other device.</string>
+    <string name="back">Back</string>
+    <string name="home">Home</string>
+    <string name="recents">Recents</string>
+    <string name="type">Type</string>
+    <string name="type_title">Type on the other device</string>
+    <string name="type_hint">Goes into the field with the cursor there</string>
+    <string name="send">Send</string>
+    <string name="cancel">Cancel</string>
+</resources>
