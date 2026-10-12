@@ -17,7 +17,7 @@ import java.io.InputStream
  * Turns the Mac's messages into touches. Each message starts with one byte saying what it is:
  *
  *     0 finger down, 1 finger moved, 2 finger up:  x, y (two bytes each, 0…65535 across and down the screen)
- *     3 a key:  one byte (0 Back, 1 Home, 2 Recents, 3 notifications, 4 quick settings, 5 lock the screen)
+ *     3 a key:  one byte (0 Back, 1 Home, 2 Recents, 3 notifications, 4 quick settings, 5 lock the screen, 6 wake the screen)
  *     4 text:   its length in bytes (two bytes), then UTF-8; "\n" is Return and "\u0008" deletes backwards
  *     5 scroll: x, y, then how far across and down (two signed bytes each, same scale as x and y)
  *
@@ -200,7 +200,8 @@ class TouchService : AccessibilityService() {
                     }
                     3 -> {
                         val which = data.read()
-                        run { it.key(which) }
+                        // Waking the screen needs no accessibility service.
+                        if (which == 6) LinkService.instance?.wake() else run { it.key(which) }
                     }
                     4 -> {
                         val bytes = ByteArray(data.readUnsignedShort())

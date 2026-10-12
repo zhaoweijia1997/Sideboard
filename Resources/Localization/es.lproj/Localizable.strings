@@ -445,3 +445,4 @@
 "A newer Sideboard Link is ready for this device." = "Hay una versión más nueva de Sideboard Link para este dispositivo.";
 "Sends the app to the device. If the device asks whether to install or scan it, answer there or with the mouse here." = "Envía la app al dispositivo. Si el dispositivo pregunta si instalarla o analizarla, responde allí o con el ratón aquí.";
 "macOS isn't letting Sideboard look for devices on your network. Allow it in System Settings → Privacy & Security → Local Network." = "macOS no deja que Sideboard busque dispositivos en tu red. Permítelo en Ajustes del Sistema → Privacidad y seguridad → Red local.";
+"Lock the Screen" = "Bloquear la pantalla";

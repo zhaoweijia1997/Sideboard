@@ -445,3 +445,4 @@
 "A newer Sideboard Link is ready for this device." = "इस डिवाइस के लिए नया Sideboard Link तैयार है।";
 "Sends the app to the device. If the device asks whether to install or scan it, answer there or with the mouse here." = "ऐप डिवाइस को भेजता है। अगर डिवाइस इंस्टॉल या स्कैन करने के बारे में पूछे, तो वहाँ या यहाँ माउस से जवाब दें।";
 "macOS isn't letting Sideboard look for devices on your network. Allow it in System Settings → Privacy & Security → Local Network." = "macOS, Sideboard को आपके नेटवर्क पर डिवाइस खोजने नहीं दे रहा है। सिस्टम सेटिंग्ज़ → गोपनीयता और सुरक्षा → लोकल नेटवर्क में इसे अनुमति दें।";
+"Lock the Screen" = "स्क्रीन लॉक करें";

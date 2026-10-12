@@ -10,7 +10,8 @@ Sideboard on the Mac is to it, in your hand. About 90 KB, no libraries, Android 
   the screen. It comes back by itself after the other device's screen is turned or the
   connection drops.
 - **Touches**: a finger on the picture is a finger there, as it moves. Below the picture are
-  Back, Home, Recents and Type (text for the field that has the cursor on the other device).
+  Back, Home, Recents, Type (text for the field that has the cursor on the other device),
+  Wake and Lock (the other device's power button, in two halves).
 - **Asking first** (`LinkClient.kt`): the first time, the other device asks its owner whether
   to let this one in, and remembers the answer.
 

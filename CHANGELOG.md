@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.8.1 — 2026-10-12
+
+Sideboard Link 0.2 and Sideboard Viewer 0.2 come with it.
+
+- **Several can watch at once.** A Mac and a phone can have the same device's screen open
+  together; before, each new viewer pushed the other one out, and both kept trying.
+- **The picture follows the network.** When sending holds things up, the app lowers the
+  quality (fewer bits per second) so the picture keeps up, and raises it again once things
+  have gone smoothly for a few seconds.
+- **Wake and lock from afar**: two new buttons in the live screen of a Link device, and in
+  the Viewer. Wake turns the screen on as the power button would; the lock screen stays in
+  the way as usual, and with the picture there it can be unlocked by touch.
+- Viewer: the picture no longer drops and reconnects every few seconds (it took a pause in
+  the stream for the end of a picture too eagerly).
+- Tried between a Pixel 3 XL (Android 12) and a Pixel XL (Android 10): Recents, typing,
+  turning either device, leaving and returning, Wi-Fi going away and coming back, three
+  minutes of scrolling, lock and wake.
+
 ## Sideboard Viewer 0.1 — 2026-10-12
 
 - A new Android app, `android/viewer`: another phone or tablet as the screen and the finger

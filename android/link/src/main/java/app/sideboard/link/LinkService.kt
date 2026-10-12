@@ -12,6 +12,7 @@ import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
 import org.json.JSONObject
 import java.io.InputStream
 import java.net.Inet4Address
@@ -163,6 +164,14 @@ class LinkService : Service() {
                 TouchService.listen(input)
             }
         }
+    }
+
+    /** Turns the screen on, as the power button would; the lock screen stays in the way as usual. */
+    fun wake() {
+        val power = getSystemService(PowerManager::class.java)
+        @Suppress("DEPRECATION")
+        val lock = power.newWakeLock(PowerManager.SCREEN_BRIGHT_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP, "sideboard:wake")
+        runCatching { lock.acquire(3_000) }
     }
 
     /** A notification with Allow and Deny; the app's own screen asks the same while it is open. */

@@ -445,3 +445,4 @@
 "A newer Sideboard Link is ready for this device." = "A newer Sideboard Link is ready for this device.";
 "Sends the app to the device. If the device asks whether to install or scan it, answer there or with the mouse here." = "Sends the app to the device. If the device asks whether to install or scan it, answer there or with the mouse here.";
 "macOS isn't letting Sideboard look for devices on your network. Allow it in System Settings → Privacy & Security → Local Network." = "macOS isn't letting Sideboard look for devices on your network. Allow it in System Settings → Privacy & Security → Local Network.";
+"Lock the Screen" = "Lock the Screen";

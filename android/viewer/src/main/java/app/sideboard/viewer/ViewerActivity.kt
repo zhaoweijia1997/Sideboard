@@ -9,6 +9,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.HandlerThread
+import android.util.Log
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.MotionEvent
@@ -77,6 +78,9 @@ class ViewerActivity : Activity(), SurfaceHolder.Callback {
                 addView(button(label) { sendControl(byteArrayOf(3, key.toByte())) }, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
             }
             addView(button(R.string.type) { askText() }, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+            // The other device's power button, in two halves: screen on (its lock screen stays), and lock.
+            addView(button(R.string.wake) { sendControl(byteArrayOf(3, 6)) }, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+            addView(button(R.string.lock) { sendControl(byteArrayOf(3, 5)) }, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
         }
         setContentView(LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -141,6 +145,7 @@ class ViewerActivity : Activity(), SurfaceHolder.Callback {
                 }
                 val width = parts.getOrNull(1)?.toIntOrNull() ?: 720
                 val height = parts.getOrNull(2)?.toIntOrNull() ?: 1280
+                Log.i(TAG, "picture $width x $height")
                 runOnUiThread {
                     videoWidth = width
                     videoHeight = height
@@ -171,6 +176,7 @@ class ViewerActivity : Activity(), SurfaceHolder.Callback {
 
     private fun lost() {
         if (!running) return
+        Log.i(TAG, "picture lost")
         say(getString(R.string.state_lost))
         pause(1_000)
     }
@@ -357,12 +363,16 @@ class ViewerActivity : Activity(), SurfaceHolder.Callback {
     private fun button(label: Int, action: () -> Unit) = Button(this).apply {
         text = getString(label)
         isAllCaps = false
+        setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+        setPadding(0, paddingTop, 0, paddingBottom)
+        maxLines = 1
         setOnClickListener { action() }
     }
 
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
 
     companion object {
+        private const val TAG = "SideboardViewer"
         /** Milliseconds without anything arriving after which the stream counts as quiet. */
         private const val QUIET = 25
         const val HOST = "host"

@@ -369,7 +369,7 @@ final class LinkStream: @unchecked Sendable {
 /// Touches, keys and text for a Link device, sent as they happen.
 final class LinkTouch: @unchecked Sendable {
     enum Key: UInt8 {
-        case back = 0, home = 1, recents = 2, notifications = 3, quickSettings = 4, lock = 5
+        case back = 0, home = 1, recents = 2, notifications = 3, quickSettings = 4, lock = 5, wake = 6
     }
 
     private let endpoint: NWEndpoint

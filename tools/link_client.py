@@ -7,7 +7,7 @@ without the Mac app:
     tools/link_client.py HOST[:PORT] tap X Y            (0…1 across and down the screen)
     tools/link_client.py HOST[:PORT] swipe X1 Y1 X2 Y2
     tools/link_client.py HOST[:PORT] scroll X Y ACROSS DOWN   (fractions of the screen; DOWN 0.3 shows what is further down)
-    tools/link_client.py HOST[:PORT] key back|home|recents|notifications
+    tools/link_client.py HOST[:PORT] key back|home|recents|notifications|quick|lock|wake
     tools/link_client.py HOST[:PORT] text "some words"
     tools/link_client.py HOST[:PORT] update APP.apk     (a newer copy of the app, signed with the same key)
 
@@ -111,7 +111,7 @@ def main():
             # how far the page should move across and down, as fractions of the screen
             sock.sendall(b"\x05" + spot(*rest[:2]) + struct.pack(">hh", round(float(rest[2]) * 65535), round(float(rest[3]) * 65535)))
         elif what == "key":
-            sock.sendall(bytes([3, ["back", "home", "recents", "notifications", "quick", "lock"].index(rest[0])]))
+            sock.sendall(bytes([3, ["back", "home", "recents", "notifications", "quick", "lock", "wake"].index(rest[0])]))
         elif what == "text":
             data = rest[0].encode()
             sock.sendall(b"\x04" + struct.pack(">H", len(data)) + data)

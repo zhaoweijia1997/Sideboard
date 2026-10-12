@@ -20,6 +20,8 @@
         xmlns:tools="http://schemas.android.com/tools"
         tools:ignore="ProtectedPermissions" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Turning the screen on when asked to (the lock screen stays). -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
     <!-- Waiting for the Mac again after the device restarts. -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 

@@ -15,7 +15,8 @@ Link) while the device is still on adb.
   app's own screen). `AdbReceiver.kt` lets a Mac that already has the device on adb allow
   itself; only the adb shell can call it.
 - **Shows the screen** (`ScreenCast.kt`, `CaptureActivity.kt`): Android's screen capture into
-  an H.264 encoder, for one Mac at a time. Android asks before an app may capture the screen;
+  one H.264 encoder whose pictures go to everybody watching; its bit rate follows how well
+  the network keeps up. Android asks before an app may capture the screen;
   the accessibility service answers that question when it was asked on the Mac's behalf.
 - **Takes touches** (`TouchService.kt`): an accessibility service that turns the Mac's
   messages into gestures (a drag is one gesture that keeps being continued), the Back, Home
@@ -31,6 +32,7 @@ Link) while the device is still on adb.
 - `FOREGROUND_SERVICE` (connected device, media projection), `POST_NOTIFICATIONS`: the service
   and its notification, which says so while the screen is being watched.
 - `RECEIVE_BOOT_COMPLETED`: waiting again after a restart.
+- `WAKE_LOCK`: turning the screen on when a viewer asks for it. The lock screen stays.
 - `WRITE_SECURE_SETTINGS` (given over adb by Sideboard: `pm grant`): only used to put its own
   accessibility service back in the list of enabled ones.
 - `REQUEST_INSTALL_PACKAGES` (allowed over adb: `appops set … REQUEST_INSTALL_PACKAGES allow`):

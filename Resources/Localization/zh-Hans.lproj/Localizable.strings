@@ -445,3 +445,4 @@
 "A newer Sideboard Link is ready for this device." = "这台设备可以更新 Sideboard Link 了。";
 "Sends the app to the device. If the device asks whether to install or scan it, answer there or with the mouse here." = "把 App 发给设备。如果设备询问是否安装或扫描，在设备上或者用这里的鼠标回答。";
 "macOS isn't letting Sideboard look for devices on your network. Allow it in System Settings → Privacy & Security → Local Network." = "macOS 没有允许 Sideboard 查找你网络里的设备。请在“系统设置 → 隐私与安全性 → 本地网络”里允许它。";
+"Lock the Screen" = "锁定屏幕";

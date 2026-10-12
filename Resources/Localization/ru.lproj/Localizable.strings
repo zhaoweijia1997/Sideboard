@@ -445,3 +445,4 @@
 "A newer Sideboard Link is ready for this device." = "Для этого устройства готова новая версия Sideboard Link.";
 "Sends the app to the device. If the device asks whether to install or scan it, answer there or with the mouse here." = "Отправляет приложение на устройство. Если устройство спросит, установить или проверить его, ответьте там или мышью здесь.";
 "macOS isn't letting Sideboard look for devices on your network. Allow it in System Settings → Privacy & Security → Local Network." = "macOS не разрешает Sideboard искать устройства в вашей сети. Разрешите это в «Системные настройки → Конфиденциальность и безопасность → Локальная сеть».";
+"Lock the Screen" = "Заблокировать экран";

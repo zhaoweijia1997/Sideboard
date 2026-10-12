@@ -445,3 +445,4 @@
 "A newer Sideboard Link is ready for this device." = "このデバイス用の新しい Sideboard Link があります。";
 "Sends the app to the device. If the device asks whether to install or scan it, answer there or with the mouse here." = "アプリをデバイスに送ります。インストールやスキャンの確認が出たら、デバイス上か、ここからマウスで答えてください。";
 "macOS isn't letting Sideboard look for devices on your network. Allow it in System Settings → Privacy & Security → Local Network." = "macOS が Sideboard にネットワーク上のデバイスを探すことを許可していません。「システム設定 → プライバシーとセキュリティ → ローカルネットワーク」で許可してください。";
+"Lock the Screen" = "画面をロック";

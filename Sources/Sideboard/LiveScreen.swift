@@ -267,8 +267,8 @@ final class LiveScreen {
 
     func press(_ key: RemoteKey) {
         if isLink {
-            // The Link app knows the three navigation buttons; the rest need adb.
-            let known: [RemoteKey: LinkTouch.Key] = [.back: .back, .home: .home, .recentApps: .recents]
+            // The Link app knows the navigation buttons and the two halves of the power button; the rest need adb.
+            let known: [RemoteKey: LinkTouch.Key] = [.back: .back, .home: .home, .recentApps: .recents, .wake: .wake, .sleep: .lock]
             if let mapped = known[key] { linkTouch?.press(mapped) }
         } else if let link, link.isReady {
             link.press(key.rawValue)
@@ -389,8 +389,14 @@ struct LiveScreenView: View {
                         .help(Text("Home"))
                     Button { live.press(.recentApps) } label: { Label("Recent apps", systemImage: "square.on.square") }
                         .help(Text("Recent apps"))
-                    // The remote's other buttons go by adb, which a Link device doesn't need to have.
-                    if !live.isLink {
+                    // The remote's other buttons go by adb, which a Link device doesn't need to have:
+                    // it gets the two halves of the power button instead.
+                    if live.isLink {
+                        Button { live.press(.wake) } label: { Label("Wake Up", systemImage: "sun.max") }
+                            .help(Text("Wake Up"))
+                        Button { live.press(.sleep) } label: { Label("Lock the Screen", systemImage: "lock") }
+                            .help(Text("Lock the Screen"))
+                    } else {
                         Button { showingRemote.toggle() } label: { Label("Remote", systemImage: "av.remote") }
                             .help(Text("Remote"))
                             .popover(isPresented: $showingRemote, arrowEdge: .bottom) {

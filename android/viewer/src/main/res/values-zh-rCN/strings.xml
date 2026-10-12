@@ -16,6 +16,8 @@
     <string name="home">主屏幕</string>
     <string name="recents">最近</string>
     <string name="type">输入</string>
+    <string name="wake">唤醒</string>
+    <string name="lock">锁屏</string>
     <string name="type_title">在对方设备上输入</string>
     <string name="type_hint">会进入对方光标所在的输入框</string>
     <string name="send">发送</string>

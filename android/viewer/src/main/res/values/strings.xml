@@ -17,6 +17,8 @@
     <string name="home">Home</string>
     <string name="recents">Recents</string>
     <string name="type">Type</string>
+    <string name="wake">Wake</string>
+    <string name="lock">Lock</string>
     <string name="type_title">Type on the other device</string>
     <string name="type_hint">Goes into the field with the cursor there</string>
     <string name="send">Send</string>
