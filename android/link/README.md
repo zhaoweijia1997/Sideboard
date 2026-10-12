@@ -20,7 +20,9 @@ Link) while the device is still on adb.
   the accessibility service answers that question when it was asked on the Mac's behalf.
 - **Takes touches** (`TouchService.kt`): an accessibility service that turns the Mac's
   messages into gestures (a drag is one gesture that keeps being continued), the Back, Home
-  and Recents actions, and text for the field with the cursor.
+  and Recents actions, and text for the field with the cursor. On the lock screen's PIN pad,
+  which ignores such gestures, a tap or a typed digit presses the key itself; a touch also
+  turns the screen on and keeps it on for half a minute while the device is locked.
 - **Looks after itself** (`Keeper.kt`, `Updater.kt`): switches its accessibility service back
   on when Android switched it off, and installs a newer copy of itself sent by the Mac.
 - Everything is marked to run before the first unlock after a restart.

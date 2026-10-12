@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.8.2 — 2026-10-12
+
+Sideboard Link 0.3 comes with it.
+
+- **Unlocking from afar works.** The lock screen's PIN pad takes no notice of gestures made
+  for somebody else, so a tap on one of its keys now presses that key directly, the way a
+  screen reader does for its user. Typed digits press the keys too, swiping the lock screen
+  up first if the pad isn't showing.
+- **A touch wakes the screen**: touching the dark picture turns the device's screen on; no
+  need to find the Wake button first.
+- **The screen stays on while you are at the lock screen**: about half a minute after each
+  touch, instead of Android's few seconds, so there is time to enter the PIN. Once unlocked,
+  the device's own screen timeout applies again.
+
 ## 0.8.1 — 2026-10-12
 
 Sideboard Link 0.2 and Sideboard Viewer 0.2 come with it.

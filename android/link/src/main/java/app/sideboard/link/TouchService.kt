@@ -35,6 +35,8 @@ class TouchService : AccessibilityService() {
     private var busy = false
     private var nextMove: PointF? = null
     private var lift = false
+    /** Where the finger went down, to tell a tap from a drag when it lifts. */
+    private var downAt = PointF()
 
     override fun onServiceConnected() {
         instance = this
@@ -78,6 +80,7 @@ class TouchService : AccessibilityService() {
         nextMove = null
         lift = false
         last = at
+        downAt = PointF(at.x, at.y)
         val made = GestureDescription.StrokeDescription(Path().apply { moveTo(at.x, at.y) }, 0, PIECE, true)
         send(made)
     }
@@ -89,9 +92,35 @@ class TouchService : AccessibilityService() {
     }
 
     private fun up() {
+        pressLockScreenKey()
         if (stroke == null && !busy) return
         lift = true
         pump()
+    }
+
+    /**
+     * The lock screen's PIN pad takes no notice of gestures made for somebody else, only of real
+     * fingers. So a tap that lands on one of its keys presses that key directly, the way a
+     * screen reader does for its user.
+     */
+    private fun pressLockScreenKey() {
+        val moved = Math.hypot((last.x - downAt.x).toDouble(), (last.y - downAt.y).toDouble())
+        if (moved > resources.displayMetrics.density * 16) return
+        if (!getSystemService(android.app.KeyguardManager::class.java).isKeyguardLocked) return
+        val root = rootInActiveWindow ?: return
+        val bounds = android.graphics.Rect()
+        fun keyAt(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+            node.getBoundsInScreen(bounds)
+            if (!bounds.contains(downAt.x.toInt(), downAt.y.toInt())) return null
+            for (index in 0 until node.childCount) {
+                val child = node.getChild(index) ?: continue
+                keyAt(child)?.let { return it }
+            }
+            val name = node.viewIdResourceName.orEmpty()
+            val isKey = name.startsWith("com.android.systemui:id/key") || name == "com.android.systemui:id/delete_button"
+            return node.takeIf { isKey && it.isClickable }
+        }
+        keyAt(root)?.performAction(AccessibilityNodeInfo.ACTION_CLICK)
     }
 
     /** Sends the next piece once the one before has run. */
@@ -161,9 +190,26 @@ class TouchService : AccessibilityService() {
         performGlobalAction(action)
     }
 
-    /** Types into whatever field has the cursor, by rewriting its text. */
+    /**
+     * Types into whatever field has the cursor, by rewriting its text. Where there is no such
+     * field but there are keys on the screen, as on the lock screen's PIN pad, it presses the
+     * keys instead: each character's own key, Return for the pad's Enter, and its delete key.
+     */
     private fun type(text: String) {
-        val field = rootInActiveWindow?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: return
+        val root = rootInActiveWindow ?: return
+        val field = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+        if (field == null || !field.isEditable) {
+            if (text.isNotEmpty() && key(root, text[0]) == null && getSystemService(android.app.KeyguardManager::class.java).isKeyguardLocked) {
+                // The lock screen without its keys yet: swipe it up first, as a finger would, then press them.
+                val size = ScreenCast.screenSize(this)
+                val path = Path().apply { moveTo(size.x / 2f, size.y * 0.9f); lineTo(size.x / 2f, size.y * 0.2f) }
+                dispatchGesture(GestureDescription.Builder().addStroke(GestureDescription.StrokeDescription(path, 0, 200)).build(), null, null)
+                main.postDelayed({ rootInActiveWindow?.let { shown -> for (char in text) key(shown, char)?.performAction(AccessibilityNodeInfo.ACTION_CLICK) } }, 900)
+                return
+            }
+            for (char in text) key(root, char)?.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+            return
+        }
         if (text == "\n" && Build.VERSION.SDK_INT >= 30) {
             field.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER.id)
             return
@@ -175,6 +221,19 @@ class TouchService : AccessibilityService() {
         field.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, Bundle().apply {
             putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, now)
         })
+    }
+
+    /** The on-screen key for [char], found by its label or, for Enter and delete, by the lock screen's names for them. */
+    private fun key(root: AccessibilityNodeInfo, char: Char): AccessibilityNodeInfo? {
+        val found = when (char) {
+            '\n' -> root.findAccessibilityNodeInfosByViewId("com.android.systemui:id/key_enter")
+            '\b' -> root.findAccessibilityNodeInfosByViewId("com.android.systemui:id/delete_button")
+            else -> root.findAccessibilityNodeInfosByText(char.toString()).filter { it.text?.toString() == char.toString() || it.contentDescription?.toString() == char.toString() }
+        }
+        // The label may sit inside the key: the nearest thing that can be pressed.
+        var key = found.firstOrNull()
+        while (key != null && !key.isClickable) key = key.parent
+        return key
     }
 
     companion object {
@@ -192,6 +251,8 @@ class TouchService : AccessibilityService() {
             while (true) {
                 val kind = data.read()
                 if (kind < 0) return
+                // A finger going down, a key or text: the screen comes on if it was off or locked.
+                if (kind != 1 && kind != 2) LinkService.instance?.touched()
                 when (kind) {
                     0, 1, 2 -> {
                         val x = data.readUnsignedShort()

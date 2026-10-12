@@ -1,5 +1,6 @@
 package app.sideboard.link
 
+import android.app.KeyguardManager
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -43,6 +44,7 @@ class LinkService : Service() {
     private var server: ServerSocket? = null
     private var registration: NsdManager.RegistrationListener? = null
     @Volatile private var sharing = false
+    @Volatile private var lastLight = 0L
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -167,11 +169,28 @@ class LinkService : Service() {
     }
 
     /** Turns the screen on, as the power button would; the lock screen stays in the way as usual. */
-    fun wake() {
+    fun wake() = light(WAKE_SECONDS)
+
+    /**
+     * Somebody is using the device from afar. If the screen is off or the lock screen is up,
+     * the screen is turned on and kept on for a while after each touch, so there is time to
+     * swipe and enter the PIN; Android's own few seconds on the lock screen are not enough for
+     * that. Once unlocked, the device's usual screen timeout is left alone.
+     */
+    fun touched() {
+        val now = System.currentTimeMillis()
+        if (now - lastLight < 3_000) return
+        val power = getSystemService(PowerManager::class.java)
+        val locked = getSystemService(KeyguardManager::class.java).isKeyguardLocked
+        if (!power.isInteractive || locked) light(WAKE_SECONDS)
+    }
+
+    private fun light(seconds: Int) {
+        lastLight = System.currentTimeMillis()
         val power = getSystemService(PowerManager::class.java)
         @Suppress("DEPRECATION")
         val lock = power.newWakeLock(PowerManager.SCREEN_BRIGHT_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP, "sideboard:wake")
-        runCatching { lock.acquire(3_000) }
+        runCatching { lock.acquire(seconds * 1_000L) }
     }
 
     /** A notification with Allow and Deny; the app's own screen asks the same while it is open. */
@@ -217,6 +236,8 @@ class LinkService : Service() {
         private const val REQUESTS = "requests"
         private const val REQUEST_NOTICE = 2
         private const val PAIRING_SECONDS = 60L
+        /** How long the screen stays on after a touch from afar while the device is locked. */
+        private const val WAKE_SECONDS = 30
         private val TOKEN = Regex("[0-9a-f]{32}")
 
         @Volatile var instance: LinkService? = null
