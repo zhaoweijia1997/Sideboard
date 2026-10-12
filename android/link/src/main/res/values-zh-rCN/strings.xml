@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="touch_service">Sideboard Link（来自 Mac 的点按）</string>
+    <string name="touch_description">让 Mac 上的 Sideboard 通过局域网在这台设备上点按、滑动和输入文字，不用数据线，也不用 adb。只有你在这台设备上允许过的 Mac 才能这样做。</string>
+    <string name="main_body">Mac 上的 Sideboard 可以通过局域网显示这台设备的画面，并用鼠标操作它，不用数据线。数据不会离开你的局域网，只有你在这里允许过的 Mac 才能连接。</string>
+    <string name="state_waiting">正在 %1$s 的 %2$d 端口等待你的 Mac</string>
+    <string name="state_stopped">没有在运行</string>
+    <string name="touch_on">来自 Mac 的点按：已开启</string>
+    <string name="touch_off">来自 Mac 的点按：未开启。请在“无障碍”里打开“Sideboard Link”；不开的话 Mac 没法点按，看画面也需要有人在这台设备上确认。</string>
+    <string name="open_accessibility">打开无障碍设置</string>
+    <string name="macs_none">还没有允许过任何 Mac。在 Sideboard 里打开这台设备，这里会出现一个请求。</string>
+    <string name="macs_title">已允许：</string>
+    <string name="forget_all">忘记所有 Mac</string>
+    <string name="pair_title">“%1$s”想查看并操作这台设备</string>
+    <string name="pair_body">只有当它确实是你的 Mac、而且是你刚刚发起的，才点允许。</string>
+    <string name="allow">允许</string>
+    <string name="deny">拒绝</string>
+    <string name="channel_waiting">等待 Mac</string>
+    <string name="channel_requests">来自 Mac 的请求</string>
+    <string name="notice_waiting">正在等待 Mac 上的 Sideboard</string>
+    <string name="notice_sharing">Mac 上的 Sideboard 正在查看这块屏幕</string>
+</resources>

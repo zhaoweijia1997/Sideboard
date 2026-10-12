@@ -21,3 +21,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "SideboardCompanion"
 include(":app")
+include(":link")

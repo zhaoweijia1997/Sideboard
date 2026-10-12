@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name" translatable="false">Sideboard Link</string>
+    <string name="touch_service">Sideboard Link (touches from your Mac)</string>
+    <string name="touch_description">Lets Sideboard on your Mac tap, swipe and type on this device over your local network, with no cable and no adb. Only a Mac you have allowed on this device can do so.</string>
+    <string name="main_body">Sideboard on your Mac can show this device\'s screen and use it with the mouse over your local network, with no cable. Nothing leaves your network, and only a Mac you allow here can connect.</string>
+    <string name="state_waiting">Waiting for your Mac at %1$s, port %2$d</string>
+    <string name="state_stopped">Not running</string>
+    <string name="touch_on">Touches from the Mac: on</string>
+    <string name="touch_off">Touches from the Mac: off. Turn on “Sideboard Link” under Accessibility; without it the Mac can\'t tap, and can\'t see the screen without someone confirming here.</string>
+    <string name="open_accessibility">Open Accessibility settings</string>
+    <string name="macs_none">No Mac is allowed yet. Open this device in Sideboard, and a request appears here.</string>
+    <string name="macs_title">Allowed:</string>
+    <string name="forget_all">Forget all Macs</string>
+    <string name="pair_title">%1$s wants to see and use this device</string>
+    <string name="pair_body">Allow it only if that is your Mac asking right now.</string>
+    <string name="allow">Allow</string>
+    <string name="deny">Deny</string>
+    <string name="channel_waiting">Waiting for the Mac</string>
+    <string name="channel_requests">Requests from a Mac</string>
+    <string name="notice_waiting">Waiting for Sideboard on your Mac</string>
+    <string name="notice_sharing">Sideboard on your Mac is seeing this screen</string>
+</resources>
