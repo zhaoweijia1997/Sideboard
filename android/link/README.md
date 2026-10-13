@@ -52,6 +52,22 @@ Link) while the device is still on adb.
 - Looking at the screen through adb (`uiautomator dump`) switches every accessibility service
   off for a few seconds, this one included.
 
+## When it wouldn't come up
+
+The app writes down what happens to it: every connection and how it ended, the Wi-Fi coming and
+going, the screen going on and off, each announcement, the device dozing, anything that failed.
+Never what was on the screen or what was typed. The last few hundred kilobytes are kept on the
+device, and a Mac it has allowed can read them:
+
+```bash
+Sideboard.app/Contents/MacOS/Sideboard --link-log            # every device found
+../../tools/link_client.py DEVICE-ADDRESS log 50             # the last 50 lines
+adb logcat -s SideboardLink                                  # the same lines, over a cable
+```
+
+`info` also carries a `state` line: screen on or off, locked, dozing, Wi-Fi, how many are
+watching, and how the last announcement went.
+
 ## Trying it without the Mac app
 
 ```bash

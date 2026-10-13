@@ -9,6 +9,25 @@ import Network
 /// with the port forwarded), also drags, presses Home and types, and looks through adb at what
 /// that did.
 enum LinkCheck {
+    /// `--link-log [host:port]`: what a device's Link app wrote down about itself. With no address,
+    /// every device found on the network (or remembered and still answering) in five seconds.
+    static func log(target: String?) async {
+        var places: [(String, NWEndpoint)] = []
+        if let target, let endpoint = LinkMemory.endpoint(target.contains(":") ? target : target + ":47600") {
+            places = [(target, endpoint)]
+        } else {
+            let browser = await LinkBrowser.shared
+            await browser.start()
+            try? await Task.sleep(for: .seconds(5))
+            places = await browser.devices.map { ($0.name, $0.endpoint) }
+            if places.isEmpty { print("No Link device found on the network") }
+        }
+        for (name, endpoint) in places {
+            print("== \(name)")
+            print(await LinkSetup.journal(of: endpoint) ?? "No log: the device didn't answer, hasn't allowed this Mac, or runs a Link older than 0.6.")
+        }
+    }
+
     static func run(target: String?, serial: String?) async {
         var failures = 0
         func expect(_ what: String, _ ok: Bool, _ detail: String = "") {

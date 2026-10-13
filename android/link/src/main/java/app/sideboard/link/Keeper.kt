@@ -24,6 +24,7 @@ object Keeper {
         val on = listed.split(':').any { ComponentName.unflattenFromString(it) == mine }
         if (on) return true
         if (!canKeep(context)) return false
+        Journal.note("touch: Android had switched the accessibility service off; switching it back on")
         return runCatching {
             val added = if (listed.isBlank()) mine.flattenToString() else listed + ":" + mine.flattenToString()
             Settings.Secure.putString(resolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES, added)

@@ -34,6 +34,37 @@ enum SideLink {
     static func serial(for name: String) -> String { serialPrefix + name }
 }
 
+/// Where each device was last reached, by the name it announces. A phone's announcement can
+/// go quiet (after its Wi-Fi drops and comes back, or simply a long while) though the app is
+/// still there at the same address; then the Mac asks at the address it remembers.
+enum LinkMemory {
+    private static let key = "linkAddresses"
+
+    static var all: [String: String] {
+        UserDefaults.standard.dictionary(forKey: key) as? [String: String] ?? [:]
+    }
+
+    static func remember(_ name: String, host: String, port: UInt16) {
+        var known = all
+        let address = "\(host):\(port)"
+        guard known[name] != address else { return }
+        known[name] = address
+        UserDefaults.standard.set(known, forKey: key)
+    }
+
+    static func forget(_ name: String) {
+        var known = all
+        guard known.removeValue(forKey: name) != nil else { return }
+        UserDefaults.standard.set(known, forKey: key)
+    }
+
+    static func endpoint(_ address: String) -> NWEndpoint? {
+        let parts = address.split(separator: ":")
+        guard parts.count == 2, let port = NWEndpoint.Port(String(parts[1])) else { return nil }
+        return .hostPort(host: NWEndpoint.Host(String(parts[0])), port: port)
+    }
+}
+
 /// A device found on the network.
 struct LinkDevice: Identifiable, Hashable {
     /// The name it announces, such as "Sideboard Link (Pixel XL)".
@@ -60,6 +91,11 @@ final class LinkBrowser {
     /// macOS isn't letting Sideboard look on the local network (Privacy & Security → Local Network).
     private(set) var blocked = false
     private var browser: NWBrowser?
+    /// What the network's announcements show now, and the remembered devices that answered at their old address though they aren't announced.
+    private var announced: [LinkDevice] = []
+    private var reached: [LinkDevice] = []
+    private var asking: Task<Void, Never>?
+    private var rounds = 0
     /// Devices named by address (SIDEBOARD_LINK=host:port,…), for trying things out through a forwarded port.
     private let fixed: [LinkDevice]
 
@@ -82,7 +118,8 @@ final class LinkBrowser {
             }
             Task { @MainActor in
                 guard let self else { return }
-                self.devices = self.fixed + found.sorted { $0.id < $1.id }
+                self.announced = found.sorted { $0.id < $1.id }
+                self.merge()
             }
         }
         browser.stateUpdateHandler = { [weak self] state in
@@ -96,6 +133,42 @@ final class LinkBrowser {
         }
         browser.start(queue: .main)
         self.browser = browser
+        asking = Task { [weak self] in
+            while !Task.isCancelled {
+                await self?.askRemembered()
+                try? await Task.sleep(for: .seconds(12))
+            }
+        }
+    }
+
+    private func merge() {
+        let names = Set(announced.map(\.id))
+        devices = fixed + announced + reached.filter { !names.contains($0.id) }
+    }
+
+    /// The devices this Mac has reached before and that aren't announced now: are they still at the address they had?
+    private func askRemembered() async {
+        let names = Set(announced.map(\.id))
+        // While a device is announced, note where it is (it says so itself): now and then, and at once when it is new.
+        rounds += 1
+        let known = LinkMemory.all
+        for device in announced where known[device.id] == nil || rounds % 25 == 0 {
+            if let place = await LinkSetup.place(of: device.endpoint) { LinkMemory.remember(device.id, host: place.host, port: place.port) }
+        }
+        var answered: [LinkDevice] = []
+        for (name, address) in LinkMemory.all.sorted(by: { $0.key < $1.key }) where !names.contains(name) {
+            guard let endpoint = LinkMemory.endpoint(address) else { continue }
+            switch await LinkSetup.answers(endpoint) {
+            case .yes: answered.append(LinkDevice(id: name, endpoint: endpoint))
+            // It no longer knows this Mac (its owner cleared the list): don't keep making it ask.
+            case .asksOwner: LinkMemory.forget(name)
+            case .no: break
+            }
+        }
+        if answered != reached {
+            reached = answered
+            merge()
+        }
     }
 
     func device(serial: String) -> LinkDevice? {
@@ -142,6 +215,11 @@ final class LinkChannel: @unchecked Sendable {
             guard let self else { return }
             switch state {
             case .ready:
+                // Where this device is, for when its announcement goes quiet.
+                if case let .service(name, _, _, _) = self.connection.endpoint,
+                   case let .hostPort(host, port)? = self.connection.currentPath?.remoteEndpoint, case let .ipv4(address) = host {
+                    LinkMemory.remember(name, host: "\(address)".components(separatedBy: "%")[0], port: port.rawValue)
+                }
                 let hello = "SIDEBOARD-LINK 1\n\(SideLink.token)\n\(SideLink.macName)\n\(self.wish)\n"
                 self.connection.send(content: Data(hello.utf8) + (self.payload ?? Data()), completion: .contentProcessed { _ in })
                 self.receive()
@@ -595,6 +673,90 @@ enum LinkSetup {
 
     static func uninstall(_ adb: Adb, _ serial: String) async -> String? {
         await AppList.uninstall(adb, serial, package)
+    }
+
+    enum Answer { case yes, no, asksOwner }
+
+    /// Whether a Link device answers at this address (and still knows this Mac), found out quickly.
+    static func answers(_ endpoint: NWEndpoint) async -> Answer {
+        let queue = DispatchQueue(label: "Sideboard.LinkAsk")
+        return await withCheckedContinuation { continuation in
+            let channel = LinkChannel(endpoint: endpoint, wish: "info", queue: queue)
+            let once = Once()
+            @Sendable func finish(_ answer: Answer) {
+                if once.take() { continuation.resume(returning: answer) }
+                channel.stop()
+            }
+            channel.onProgress = { progress in
+                switch progress {
+                case .asking: finish(.asksOwner)
+                case .open: finish(.yes)
+                case .failed: finish(.no)
+                }
+            }
+            channel.start()
+            queue.asyncAfter(deadline: .now() + 3) { finish(.no) }
+        }
+    }
+
+    /// The address and port a Link device says it is at (Link 0.6 and later).
+    static func place(of endpoint: NWEndpoint) async -> (host: String, port: UInt16)? {
+        let queue = DispatchQueue(label: "Sideboard.LinkPlace")
+        return await withCheckedContinuation { continuation in
+            let channel = LinkChannel(endpoint: endpoint, wish: "info", queue: queue)
+            let once = Once()
+            @Sendable func finish(_ place: (host: String, port: UInt16)?) {
+                if once.take() { continuation.resume(returning: place) }
+                channel.stop()
+            }
+            channel.onProgress = { progress in
+                switch progress {
+                case .asking, .failed: finish(nil)
+                case let .open(line):
+                    let said = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any]
+                    guard let host = said?["address"] as? String, !host.isEmpty, let port = said?["port"] as? Int, let short = UInt16(exactly: port) else { return finish(nil) }
+                    finish((host, short))
+                }
+            }
+            channel.start()
+            queue.asyncAfter(deadline: .now() + 4) { finish(nil) }
+        }
+    }
+
+    /// What a Link device wrote down about itself (Link 0.6 and later): connections, the network, the screen. Nil when it can't be had.
+    static func journal(of endpoint: NWEndpoint) async -> String? {
+        let queue = DispatchQueue(label: "Sideboard.LinkJournal")
+        return await withCheckedContinuation { continuation in
+            let channel = LinkChannel(endpoint: endpoint, wish: "log", queue: queue)
+            let once = Once()
+            let text = Gathered()
+            @Sendable func finish() {
+                if once.take() { continuation.resume(returning: text.wanted == nil ? nil : String(decoding: text.data, as: UTF8.self)) }
+                channel.stop()
+            }
+            channel.onProgress = { progress in
+                switch progress {
+                case .asking: break
+                case let .open(line):
+                    let parts = line.split(separator: " ")
+                    guard parts.count == 2, parts[0] == "log", let size = Int(parts[1]) else { return finish() }
+                    text.wanted = size
+                    if size == 0 { finish() }
+                case .failed: finish()
+                }
+            }
+            channel.onData = { data in
+                text.data.append(data)
+                if let wanted = text.wanted, text.data.count >= wanted { finish() }
+            }
+            channel.start()
+            queue.asyncAfter(deadline: .now() + 15) { finish() }
+        }
+    }
+
+    private final class Gathered: @unchecked Sendable {
+        var wanted: Int?
+        var data = Data()
     }
 
     /// The version of the app on a Link device, asked over the network.

@@ -155,6 +155,9 @@ over your local network with no adb at all.
   switched it off, and it can take its own updates from Sideboard over the network.
 - **Wake, unlock and lock from afar**, pinch to zoom, several viewers at once, and a picture
   whose quality follows the network.
+- **When it won't come up, it can say why.** The app keeps a journal of what happened to it
+  (connections, the network, the screen; never what was on the screen), and a Mac it has
+  allowed can read it: `Sideboard.app/Contents/MacOS/Sideboard --link-log`.
 
 There is a small Android app for the other side as well: **Sideboard Viewer** (`android/viewer`, an APK on the Releases page) shows a Link device's screen on another phone or tablet and takes your touches for it.
 

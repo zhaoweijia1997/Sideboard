@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.8.5 — 2026-10-13
+
+Sideboard Link 0.6 and Sideboard Viewer 0.5 come with it. This one is about a device that
+"wouldn't come up" after a long while, or after the network changed under it.
+
+- **One dead connection no longer holds up everybody's picture.** Each viewer now has a queue
+  and a sending thread of its own. A connection that stops taking data without saying goodbye
+  (a Mac asleep, a phone out of range, a route that changed) used to block the one thread that
+  sent the picture to all; it is now let go after five seconds, and the others never notice.
+- **Looking at a sleeping device wakes it.** A screen that is off has no picture to send, and
+  Android won't hand the screen over to a sleeping device either; a viewer got a black window
+  and nothing to tell it why. Asking for the picture now turns the screen on (the lock stays).
+- **The announcement is kept fresh.** Android's announcer can go quiet after the Wi-Fi drops and
+  comes back, or simply after hours, while the app still believes it is announced. Link now
+  announces itself again whenever the Wi-Fi changes and every ten minutes, and holds
+  multicast open so the device hears the questions it is meant to answer with the screen off.
+- **Found even when it isn't announced.** Sideboard and the Viewer remember where each device
+  was and ask there too, so a device whose announcement has gone quiet still shows up.
+- **The Viewer connects by the Wi-Fi**, whatever else that phone's traffic goes through.
+- **The device keeps a journal**: connections and how each ended, the Wi-Fi coming and going,
+  the screen, the announcements, anything that went wrong. Nothing of what is on the screen
+  or typed is written, only that something happened. A Mac the device has allowed can read
+  it: `Sideboard --link-log [address]`, or `tools/link_client.py ADDRESS log`. The device's
+  `info` answer also says how it is right now.
+
 ## 0.8.4 — 2026-10-12
 
 Sideboard Link 0.5 and Sideboard Viewer 0.4 come with it.

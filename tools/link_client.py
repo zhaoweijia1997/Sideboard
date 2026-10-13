@@ -3,6 +3,7 @@
 without the Mac app:
 
     tools/link_client.py HOST[:PORT] info
+    tools/link_client.py HOST[:PORT] log [LAST_LINES]     (what the device wrote down: connections, network, screen)
     tools/link_client.py HOST[:PORT] video SECONDS FILE.h264 [LONGEST_SIDE]
     tools/link_client.py HOST[:PORT] tap X Y            (0…1 across and down the screen)
     tools/link_client.py HOST[:PORT] press X Y [SECONDS]   (a long press)
@@ -72,6 +73,21 @@ def main():
     target, what, rest = sys.argv[1], sys.argv[2], sys.argv[3:]
     if what == "info":
         print(line(connect(target, "info")))
+    elif what == "log":
+        # The device's own record of what happened (Link 0.6 and later): its length, then its text.
+        sock = connect(target, "log")
+        head = line(sock).split()
+        if len(head) != 2 or head[0] != "log":
+            sys.exit("This device's Sideboard Link is too old to keep a log.")
+        left, parts = int(head[1]), []
+        while left > 0:
+            data = sock.recv(min(65536, left))
+            if not data:
+                break
+            parts.append(data)
+            left -= len(data)
+        text = b"".join(parts).decode("utf-8", "replace")
+        print("\n".join(text.splitlines()[-int(rest[0]):]) if rest else text, end="" if not rest else "\n")
     elif what == "update":
         data = pathlib.Path(rest[0]).read_bytes()
         sock = connect(target, f"update {len(data)}")

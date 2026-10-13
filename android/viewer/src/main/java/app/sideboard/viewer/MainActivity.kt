@@ -90,6 +90,14 @@ class MainActivity : Activity() {
             }
         }
         discovery = listener
+        Lan.watch(this)
+        // The devices reached before: offered at once, at the address they had, in case their announcement has gone quiet.
+        for ((service, address) in remembered().all) {
+            val host = address.toString().substringBeforeLast(':')
+            val port = address.toString().substringAfterLast(':').toIntOrNull() ?: continue
+            if (service !in found && host !in ownAddresses()) found[service] = Found(deviceName(service), host, port)
+        }
+        show()
         runCatching { getSystemService(NsdManager::class.java).discoverServices(LinkClient.SERVICE_TYPE, NsdManager.PROTOCOL_DNS_SD, listener) }
     }
 
@@ -120,6 +128,8 @@ class MainActivity : Activity() {
                 // This device may run Sideboard Link too; it isn't offered to itself.
                 if (host != null && host !in ownAddresses()) {
                     found[info.serviceName] = Found(deviceName(info.serviceName), host, info.port)
+                    // Only addresses on the local network (not an IPv6 one that changes) are worth remembering.
+                    if (info.host is java.net.Inet4Address) remembered().edit().putString(info.serviceName, "$host:${info.port}").apply()
                     show()
                 }
                 resolving = false
@@ -127,6 +137,8 @@ class MainActivity : Activity() {
             }
         })
     }
+
+    private fun remembered() = getSharedPreferences("seen", Context.MODE_PRIVATE)
 
     private fun show() {
         list.removeAllViews()

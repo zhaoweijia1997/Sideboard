@@ -6,11 +6,11 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.ServiceInfo
-import android.net.nsd.NsdManager
-import android.net.nsd.NsdServiceInfo
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
@@ -42,7 +42,25 @@ import java.util.concurrent.TimeUnit
  */
 class LinkService : Service() {
     private var server: ServerSocket? = null
-    private var registration: NsdManager.RegistrationListener? = null
+    private var announcer: Announcer? = null
+    private val started = System.currentTimeMillis()
+    /** The screen going on and off, the device dozing, the charger: written down as they happen. */
+    private val events = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            Journal.note(
+                when (intent.action) {
+                    Intent.ACTION_SCREEN_ON -> "screen: on"
+                    Intent.ACTION_SCREEN_OFF -> "screen: off"
+                    Intent.ACTION_USER_PRESENT -> "screen: unlocked"
+                    Intent.ACTION_POWER_CONNECTED -> "power: plugged in"
+                    Intent.ACTION_POWER_DISCONNECTED -> "power: unplugged"
+                    PowerManager.ACTION_DEVICE_IDLE_MODE_CHANGED ->
+                        if (getSystemService(PowerManager::class.java).isDeviceIdleMode) "doze: the device went into deep sleep" else "doze: the device came out of deep sleep"
+                    else -> intent.action.orEmpty()
+                },
+            )
+        }
+    }
     @Volatile private var sharing = false
     @Volatile private var lastLight = 0L
 
@@ -51,6 +69,13 @@ class LinkService : Service() {
     override fun onCreate() {
         super.onCreate()
         instance = this
+        Journal.open(this)
+        Journal.note("service: started (version ${version()}, Android ${Build.VERSION.RELEASE})")
+        registerReceiver(events, IntentFilter().apply {
+            addAction(Intent.ACTION_SCREEN_ON); addAction(Intent.ACTION_SCREEN_OFF); addAction(Intent.ACTION_USER_PRESENT)
+            addAction(Intent.ACTION_POWER_CONNECTED); addAction(Intent.ACTION_POWER_DISCONNECTED)
+            addAction(PowerManager.ACTION_DEVICE_IDLE_MODE_CHANGED)
+        })
         val notices = getSystemService(NotificationManager::class.java)
         notices.createNotificationChannel(NotificationChannel(WAITING, getString(R.string.channel_waiting), NotificationManager.IMPORTANCE_MIN))
         notices.createNotificationChannel(NotificationChannel(REQUESTS, getString(R.string.channel_requests), NotificationManager.IMPORTANCE_HIGH))
@@ -58,8 +83,15 @@ class LinkService : Service() {
         Thread(::listen, "link-listen").start()
         Thread({
             // Now, and every minute: the accessibility service back on if Android switched it off.
+            // Every ten: a line to say this is still running, and the announcement made afresh.
+            var minutes = 0
             while (instance === this) {
                 runCatching { Keeper.ensure(this) }
+                if (minutes > 0 && minutes % 10 == 0) {
+                    Journal.note("alive: ${state()}")
+                    announcer?.announce()
+                }
+                minutes++
                 runCatching { Thread.sleep(60_000) }
             }
         }, "link-keep").start()
@@ -69,8 +101,10 @@ class LinkService : Service() {
 
     override fun onDestroy() {
         instance = null
+        Journal.note("service: stopping")
+        runCatching { unregisterReceiver(events) }
         runCatching { server?.close() }
-        registration?.let { runCatching { getSystemService(NsdManager::class.java).unregisterService(it) } }
+        announcer?.stop()
         ScreenCast.release()
         super.onDestroy()
     }
@@ -99,38 +133,34 @@ class LinkService : Service() {
     }
 
     private fun listen() {
-        val socket = runCatching { ServerSocket(PORT) }.getOrElse { ServerSocket(0) }
+        val socket = runCatching { ServerSocket(PORT) }.getOrElse {
+            Journal.note("listen: port $PORT is taken (${it.message}); using any free one")
+            ServerSocket(0)
+        }
         server = socket
         port = socket.localPort
-        announce(socket.localPort)
+        Journal.note("listen: on port ${socket.localPort}, address ${localAddress() ?: "none yet"}")
+        announcer = Announcer(this, socket.localPort).also { it.start() }
         while (!socket.isClosed) {
-            val client = runCatching { socket.accept() }.getOrNull() ?: break
-            Thread({ runCatching { serve(client) }; runCatching { client.close() } }, "link-client").start()
+            val client = runCatching { socket.accept() }.onFailure { Journal.note("listen: stopped accepting: ${it.message}") }.getOrNull() ?: break
+            Thread({
+                val from = client.inetAddress?.hostAddress.orEmpty()
+                val began = System.currentTimeMillis()
+                val what = arrayOf("nothing said")
+                val how = runCatching { serve(client, from, what) }.fold({ it }, { "ended with ${it.javaClass.simpleName}: ${it.message}" })
+                runCatching { client.close() }
+                // A look at how the device is ("info") comes every few seconds from a Mac that is watching: not worth a line each.
+                if (what[0] != "info") Journal.note("from $from: ${what[0]} → $how (${(System.currentTimeMillis() - began) / 1000} s)")
+            }, "link-client").start()
         }
         port = 0
     }
 
-    private fun announce(port: Int) {
-        val info = NsdServiceInfo().apply {
-            serviceName = "Sideboard Link (${Build.MODEL})"
-            serviceType = SERVICE_TYPE
-            setPort(port)
-            setAttribute("v", "1")
-            setAttribute("model", Build.MODEL)
-            setAttribute("id", deviceId(this@LinkService))
-        }
-        val listener = object : NsdManager.RegistrationListener {
-            override fun onServiceRegistered(info: NsdServiceInfo) {}
-            override fun onRegistrationFailed(info: NsdServiceInfo, error: Int) {}
-            override fun onServiceUnregistered(info: NsdServiceInfo) {}
-            override fun onUnregistrationFailed(info: NsdServiceInfo, error: Int) {}
-        }
-        registration = listener
-        runCatching { getSystemService(NsdManager::class.java).registerService(info, NsdManager.PROTOCOL_DNS_SD, listener) }
-    }
-
-    private fun serve(client: Socket) {
+    /** Serves one connection; says what was asked in [what] and returns how it ended. */
+    private fun serve(client: Socket, from: String, what: Array<String>): String {
         client.tcpNoDelay = true
+        // A connection that dies without a word (the other side asleep, or gone from the network) is noticed in the end.
+        client.keepAlive = true
         client.soTimeout = 10_000
         val input = client.getInputStream()
         val output = client.getOutputStream()
@@ -138,38 +168,74 @@ class LinkService : Service() {
             output.write((line + "\n").toByteArray())
             output.flush()
         }
-        if (readLine(input) != "SIDEBOARD-LINK 1") return
-        val token = readLine(input)?.takeIf { TOKEN.matches(it) } ?: return
-        val name = readLine(input)?.filter { !it.isISOControl() }?.take(40)?.ifBlank { null } ?: return
-        val wish = readLine(input)?.split(' ') ?: return
+        if (readLine(input) != "SIDEBOARD-LINK 1") return "not one of ours"
+        val token = readLine(input)?.takeIf { TOKEN.matches(it) } ?: return "no token"
+        val name = readLine(input)?.filter { !it.isISOControl() }?.take(40)?.ifBlank { null } ?: return "no name"
+        val wish = readLine(input)?.split(' ') ?: return "no wish"
+        what[0] = "“$name” wants ${wish.joinToString(" ")}".let { if (wish.firstOrNull() == "info") "info" else it }
 
         if (!Pairing.isAllowed(this, token)) {
-            val request = Pairing.ask(token, name) ?: return say("busy")
+            val request = Pairing.ask(token, name) ?: return "busy: another is waiting to be allowed".also { say("busy") }
             say("pairing")
             askOwner(request)
             val answered = request.answered.await(PAIRING_SECONDS, TimeUnit.SECONDS)
             getSystemService(NotificationManager::class.java).cancel(REQUEST_NOTICE)
             if (!answered) Pairing.drop(request)
-            if (!request.allowed) return say("denied")
+            if (!request.allowed) {
+                say("denied")
+                what[0] = "“$name” (not allowed yet) wants ${wish.joinToString(" ")}"
+                return if (answered) "denied by the owner" else "nobody answered on the device"
+            }
         }
         say("ok")
         client.soTimeout = 0
-        when (wish.firstOrNull()) {
-            "info" -> say(info().toString())
-            "video" -> ScreenCast.serve(this, client, wish.getOrNull(1)?.toIntOrNull() ?: 1280, wish.getOrNull(2)?.toIntOrNull() ?: 6_000_000)
+        return when (wish.firstOrNull()) {
+            "info" -> "answered".also { say(info().toString()) }
+            // The journal, for looking into what went wrong: its length, then its text.
+            "log" -> {
+                val text = Journal.text().toByteArray()
+                say("log ${text.size}")
+                output.write(text)
+                output.flush()
+                "sent ${text.size / 1024} KB"
+            }
+            "video" -> ScreenCast.serve(this, client, "“$name” at $from", wish.getOrNull(1)?.toIntOrNull() ?: 1280, wish.getOrNull(2)?.toIntOrNull() ?: 6_000_000)
             "update" -> {
-                val size = wish.getOrNull(1)?.toLongOrNull()?.takeIf { it in 1..50_000_000 } ?: return say("refused")
-                say(if (Updater.install(this, input, size)) "installing" else "failed")
+                val size = wish.getOrNull(1)?.toLongOrNull()?.takeIf { it in 1..50_000_000 } ?: return "refused".also { say("refused") }
+                val took = Updater.install(this, input, size)
+                say(if (took) "installing" else "failed")
+                if (took) "installing" else "failed"
             }
             "control" -> {
                 say(if (TouchService.instance != null) "touch on" else "touch off")
                 TouchService.listen(input)
+                "hung up"
             }
+            else -> "nothing this version knows"
         }
+    }
+
+    private fun version(): String = runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrNull() ?: ""
+
+    /** How the device is, in a line: for the journal now and then, and for whoever asks. */
+    private fun state(): String {
+        val power = getSystemService(PowerManager::class.java)
+        val locked = getSystemService(KeyguardManager::class.java).isKeyguardLocked
+        return "screen ${if (power.isInteractive) "on" else "off"}${if (locked) ", locked" else ""}, " +
+            "${if (power.isDeviceIdleMode) "dozing, " else ""}wifi ${if (announcer?.wifi == true) "up" else "down"}, " +
+            "${if (announcer?.elsewhere == true) "other traffic not by wifi, " else ""}address ${localAddress() ?: "none"}, ${ScreenCast.watching} watching, " +
+            "touch ${if (TouchService.instance != null) "on" else "off"}, mdns ${announcer?.last ?: "not started"}"
     }
 
     /** Turns the screen on, as the power button would; the lock screen stays in the way as usual. */
     fun wake() = light(WAKE_SECONDS)
+
+    /** Somebody is about to watch: the screen on if it is off, and a moment for it to come on. */
+    fun wakeToBeSeen() {
+        if (getSystemService(PowerManager::class.java).isInteractive) return
+        light(WAKE_SECONDS)
+        runCatching { Thread.sleep(700) }
+    }
 
     /**
      * Somebody is using the device from afar. If the screen is off or the lock screen is up,
@@ -188,9 +254,17 @@ class LinkService : Service() {
     private fun light(seconds: Int) {
         lastLight = System.currentTimeMillis()
         val power = getSystemService(PowerManager::class.java)
+        val was = power.isInteractive
         @Suppress("DEPRECATION")
         val lock = power.newWakeLock(PowerManager.SCREEN_BRIGHT_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP, "sideboard:wake")
-        runCatching { lock.acquire(seconds * 1_000L) }
+        val asked = runCatching { lock.acquire(seconds * 1_000L) }
+        // Only worth a line when the screen was off: did it come on?
+        if (!was) {
+            Thread({
+                runCatching { Thread.sleep(1_500) }
+                Journal.note("wake: the screen was off; asked for it on (${asked.exceptionOrNull()?.message ?: "ok"}); now ${if (power.isInteractive) "on" else "STILL OFF"}")
+            }, "link-wake").start()
+        }
     }
 
     /** A notification with Allow and Deny; the app's own screen asks the same while it is open. */
@@ -225,7 +299,12 @@ class LinkService : Service() {
             .put("height", size.y)
             .put("touch", TouchService.instance != null)
             .put("keeps", Keeper.canKeep(this))
-            .put("version", runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrNull() ?: "")
+            .put("version", version())
+            .put("up", (System.currentTimeMillis() - started) / 1000)
+            // Where to find this device again should its announcement go quiet.
+            .put("address", localAddress() ?: "")
+            .put("port", port)
+            .put("state", state())
     }
 
     companion object {

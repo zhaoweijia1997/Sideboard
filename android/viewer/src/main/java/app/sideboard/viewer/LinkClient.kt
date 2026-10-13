@@ -25,9 +25,13 @@ class LinkClient(private val context: Context, private val host: String, private
      * [Refused] with `denied`, `busy` or whatever else came back.
      */
     fun open(wish: String, asking: () -> Unit = {}): Open {
-        val socket = Socket()
+        // By the Wi-Fi, whatever else this phone's traffic goes through.
+        Lan.watch(context)
+        val socket = Lan.socket()
         try {
             socket.tcpNoDelay = true
+            // A connection that dies without a word is noticed in the end.
+            socket.keepAlive = true
             socket.connect(InetSocketAddress(host, port), 5_000)
             // Time for the owner of the other device to answer.
             socket.soTimeout = 70_000

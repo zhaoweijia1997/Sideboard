@@ -20,7 +20,9 @@ import java.io.OutputStream
 import java.net.Socket
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * The screen as an H.264 stream. Android asks the owner before an app may capture the screen
@@ -34,10 +36,71 @@ import java.util.concurrent.TimeUnit
  * When the screen is turned the stream ends for everybody, and they ask again.
  */
 object ScreenCast {
-    private class Viewer(val output: OutputStream) {
+    /**
+     * Somebody watching. Each has a queue and a thread of its own that does the sending, so
+     * one connection that has stopped taking data (a Mac asleep, a phone that walked out of
+     * the Wi-Fi, a route that changed under it) holds nobody else up: its queue fills,
+     * and it is let go.
+     */
+    private class Viewer(private val socket: Socket, val who: String) {
+        private val output: OutputStream = socket.getOutputStream()
+        private val queue = LinkedBlockingQueue<ByteArray>()
+        private val waiting = AtomicInteger(0)
         /** Has been sent a whole picture, so what follows makes sense to it. */
         var started = false
         @Volatile var gone = false
+        /** Why it is gone, for the journal. */
+        @Volatile var why = ""
+        var sent = 0L
+        /** When something last went out, to tell a slow connection from one that takes nothing at all. */
+        @Volatile private var moved = System.currentTimeMillis()
+
+        /** Bytes not sent yet. */
+        val backlog: Int get() = waiting.get()
+
+        init {
+            Thread({
+                try {
+                    while (!gone) {
+                        val bytes = queue.take()
+                        if (bytes === END) break
+                        output.write(bytes)
+                        output.flush()
+                        waiting.addAndGet(-bytes.size)
+                        sent += bytes.size
+                        moved = System.currentTimeMillis()
+                    }
+                } catch (error: Exception) {
+                    leave("sending failed: ${error.message}")
+                }
+            }, "link-viewer").start()
+        }
+
+        fun send(bytes: ByteArray) {
+            if (gone) return
+            if (waiting.get() > MOST_WAITING) return leave("too far behind (${waiting.get() / 1024} KB waiting)")
+            // Something is waiting and nothing has gone out for a while: nobody is there.
+            if (waiting.get() > 0 && System.currentTimeMillis() - moved > STUCK_MILLIS) return leave("stopped taking data for ${STUCK_MILLIS / 1000} s")
+            if (waiting.get() == 0) moved = System.currentTimeMillis()
+            waiting.addAndGet(bytes.size)
+            queue.add(bytes)
+        }
+
+        /** Hangs up, which also frees the sending thread if it is stuck in a write. */
+        fun leave(reason: String) {
+            if (gone) return
+            gone = true
+            why = reason
+            runCatching { socket.close() }
+            queue.add(END)
+        }
+
+        companion object {
+            private val END = ByteArray(0)
+            /** About four seconds of picture at the usual quality: more than that waiting and the viewer isn't really there. */
+            private const val MOST_WAITING = 3_000_000
+            private const val STUCK_MILLIS = 5_000L
+        }
     }
 
     private var projection: MediaProjection? = null
@@ -81,40 +144,54 @@ object ScreenCast {
         asking = true
         // From the background this only works while the accessibility service is on: Android lets such apps open a screen.
         runCatching { service.startActivity(Intent(service, CaptureActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
-        latch.await(40, TimeUnit.SECONDS)
+            .onFailure { Journal.note("capture: couldn't bring up Android's question: ${it.message}") }
+        val answered = latch.await(40, TimeUnit.SECONDS)
         asking = false
-        val data = consentData?.takeIf { consentCode == Activity.RESULT_OK } ?: return null
+        val data = consentData?.takeIf { consentCode == Activity.RESULT_OK }
+        if (data == null) {
+            Journal.note("capture: no permission to capture the screen (${if (answered) "refused, code $consentCode" else "nobody answered in 40 s"})")
+            return null
+        }
         consentData = null
         // The service must be of the screen-capturing kind before the permission is used.
         service.show(sharing = true)
         val manager = service.getSystemService(MediaProjectionManager::class.java)
-        val made = runCatching { manager.getMediaProjection(consentCode, data) }.getOrNull() ?: return null
+        val made = runCatching { manager.getMediaProjection(consentCode, data) }
+            .onFailure { Journal.note("capture: Android wouldn't hand over the screen: ${it.message}") }.getOrNull() ?: return null
+        Journal.note("capture: allowed")
         made.registerCallback(object : MediaProjection.Callback() {
-            override fun onStop() = release()
+            override fun onStop() {
+                Journal.note("capture: Android took the permission back")
+                release()
+            }
         }, Handler(Looper.getMainLooper()))
         projection = made
         return made
     }
 
     /** Streams to [client] until it hangs up or the screen is turned. */
-    fun serve(service: LinkService, client: Socket, longest: Int, bitRate: Int) {
+    fun serve(service: LinkService, client: Socket, who: String, longest: Int, bitRate: Int): String {
         val output = client.getOutputStream()
+        // A screen that is off has no picture to send, and Android won't hand the screen over to
+        // a sleeping device either: somebody wants to look, so the screen comes on (the lock stays).
+        service.wakeToBeSeen()
         val projection = obtain(service)
         if (projection == null) {
             output.write("refused\n".toByteArray())
             if (viewers.isEmpty()) service.show(sharing = false)
-            return
+            return "refused: no permission to capture"
         }
-        val viewer = Viewer(output)
+        val viewer: Viewer
         val mine: Int
         synchronized(this) {
             if (encoder == null && !start(service, projection, longest, bitRate)) {
                 output.write("refused\n".toByteArray())
-                return
+                return "refused: the encoder wouldn't start"
             }
             mine = round
             output.write("video $width $height\n".toByteArray())
             output.flush()
+            viewer = Viewer(client, who)
             viewers.add(viewer)
             // A whole picture for the newcomer, now.
             runCatching { encoder?.setParameters(Bundle().apply { putInt(MediaCodec.PARAMETER_KEY_REQUEST_SYNC_FRAME, 0) }) }
@@ -123,7 +200,16 @@ object ScreenCast {
         // The encoder's thread does the sending; this one only waits for the end.
         while (!viewer.gone && round == mine) Thread.sleep(100)
         viewers.remove(viewer)
+        val why = viewer.why.ifEmpty { "the stream ended ($ended)" }
+        viewer.leave("done")
+        return "$why, ${viewer.sent / 1024} KB sent, ${viewers.size} still watching"
     }
+
+    /** How many are watching now. */
+    val watching: Int get() = viewers.size
+
+    /** Why the last stream ended, for whoever was watching it. */
+    @Volatile private var ended = "never started"
 
     /** Starts the encoder and the thread that hands out its pictures. Call with the lock held. */
     private fun start(service: LinkService, projection: MediaProjection, longest: Int, bitRate: Int): Boolean {
@@ -153,10 +239,12 @@ object ScreenCast {
                 shown.resize(w, h, density)
                 shown.surface = surface
             }
-        } catch (_: Exception) {
+        } catch (error: Exception) {
+            Journal.note("capture: the encoder wouldn't start at ${w}x$h: ${error.message}")
             runCatching { made.release() }
             return false
         }
+        Journal.note("capture: encoding ${w}x$h at up to ${bitRate / 1000} kbit/s")
         encoder = made
         width = w
         height = h
@@ -176,10 +264,14 @@ object ScreenCast {
         // (pictures get softer but keep up); when it has gone smoothly for a while, more again.
         var rate = most
         var windowStart = System.nanoTime()
-        var sending = 0L
         var smooth = 0
+        var why = "nobody watching"
+        var pictures = 0L
         try {
-            while (round == mine && projection != null && rotation(service) == rotation) {
+            while (true) {
+                if (round != mine) { why = "a new stream took over"; break }
+                if (projection == null) { why = "the permission to capture is gone"; break }
+                if (rotation(service) != rotation) { why = "the screen was turned"; break }
                 if (viewers.isEmpty()) {
                     // Give a viewer that is on its way back a moment before stopping.
                     if (alone == 0L) alone = System.currentTimeMillis()
@@ -196,39 +288,30 @@ object ScreenCast {
                     buffer.get(bytes)
                     val isParameters = info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG != 0
                     val isWhole = info.flags and MediaCodec.BUFFER_FLAG_KEY_FRAME != 0
-                    if (isParameters) parameters = bytes
-                    val before = System.nanoTime()
+                    if (isParameters) parameters = bytes else pictures++
+                    // Handed to each viewer's own queue: nobody waits for anybody here.
                     for (viewer in viewers) {
                         if (viewer.gone) continue
-                        try {
-                            if (!viewer.started) {
-                                // Parameters, then nothing until a whole picture.
-                                if (isParameters) continue
-                                if (!isWhole) continue
-                                parameters?.let { viewer.output.write(it) }
-                                viewer.started = true
-                            } else if (isParameters) {
-                                viewer.output.write(bytes)
-                                continue
-                            }
-                            viewer.output.write(bytes)
-                            viewer.output.flush()
-                        } catch (_: Exception) {
-                            viewer.gone = true
+                        if (!viewer.started) {
+                            // Parameters, then nothing until a whole picture.
+                            if (isParameters || !isWhole) continue
+                            parameters?.let { viewer.send(it) }
+                            viewer.started = true
                         }
+                        viewer.send(bytes)
                     }
-                    sending += System.nanoTime() - before
                 }
                 encoder.releaseOutputBuffer(index, false)
                 val now = System.nanoTime()
                 if (now - windowStart >= 1_000_000_000L) {
-                    val busy = sending * 100 / (now - windowStart)
+                    // How far behind the slowest viewer is, in hundredths of a second of picture.
+                    val behind = (viewers.maxOfOrNull { it.backlog } ?: 0) * 800L / rate
                     val next = when {
-                        busy > 35 -> {
+                        behind > 35 -> {
                             smooth = 0
                             (rate * 7L / 10).toInt().coerceAtLeast(LEAST_RATE)
                         }
-                        busy < 5 && ++smooth >= 4 -> {
+                        behind < 5 && ++smooth >= 4 -> {
                             smooth = 0
                             (rate * 5L / 4).toInt().coerceAtMost(most)
                         }
@@ -239,13 +322,15 @@ object ScreenCast {
                         runCatching { encoder.setParameters(Bundle().apply { putInt(MediaCodec.PARAMETER_KEY_VIDEO_BITRATE, rate) }) }
                     }
                     windowStart = now
-                    sending = 0
                 }
-                if (info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) break
+                if (info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) { why = "the encoder said it was done"; break }
             }
-        } catch (_: Exception) {
+        } catch (error: Exception) {
             // The encoder gave out: everybody asks again.
+            why = "the encoder failed: ${error.message}"
         } finally {
+            ended = why
+            Journal.note("capture: stopped encoding after $pictures pictures: $why")
             synchronized(this) {
                 if (round == mine) {
                     round++

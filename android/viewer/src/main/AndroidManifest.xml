@@ -6,6 +6,8 @@
          screen and sends it touches, nothing else. -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+    <!-- Knowing which network is the Wi-Fi, so connections to the other device leave by it whatever this phone's other traffic goes through. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
     <application
         android:allowBackup="false"
